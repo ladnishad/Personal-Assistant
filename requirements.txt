@@ -1,0 +1,61 @@
+# Core Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+
+# Database
+motor==3.3.2
+pymongo==4.6.1
+beanie==1.24.0
+
+# Authentication
+pyjwt==2.8.0
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+
+# OAuth & Integrations
+google-auth==2.27.0
+google-auth-oauthlib==1.2.0
+google-auth-httplib2==0.2.0
+google-api-python-client==2.116.0
+msal==1.26.0
+
+# Email Processing
+email-validator==2.1.0.post1
+
+# Task Scheduling
+apscheduler==3.10.4
+
+# Caching (Optional)
+redis==5.0.1
+
+# LLM & Embeddings
+openai==1.10.0
+tiktoken==0.5.2
+
+# HTTP Client
+httpx==0.26.0
+requests==2.31.0
+
+# Data Validation
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Date/Time
+python-dateutil==2.8.2
+pytz==2024.1
+
+# Environment
+python-dotenv==1.0.1
+
+# Utilities
+tenacity==8.2.3
+aiofiles==23.2.1
+
+# Development
+ruff==0.1.14
+black==24.1.1
+pytest==8.0.0
+pytest-asyncio==0.23.4
+pytest-cov==4.1.0
+pre-commit==3.6.0
