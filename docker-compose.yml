@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # FastAPI Application
   api:
@@ -8,45 +6,15 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MONGODB_URL=mongodb://mongodb:27017
-      - REDIS_URL=redis://redis:6379/0
+      # Use host.docker.internal to connect to host's MongoDB/Redis on Mac/Windows
+      # For Linux, use: extra_hosts: - "host.docker.internal:host-gateway"
+      - MONGODB_URL=${MONGODB_URL:-mongodb://host.docker.internal:27017}
+      - REDIS_URL=${REDIS_URL:-redis://host.docker.internal:6379/0}
+    env_file:
+      - .env
     volumes:
       - .:/app
-    depends_on:
-      - mongodb
-      - redis
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    networks:
-      - lifeos-network
-
-  # MongoDB
-  mongodb:
-    image: mongo:7.0
-    container_name: lifeos-mongodb
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb_data:/data/db
-    environment:
-      - MONGO_INITDB_DATABASE=lifeos
-    networks:
-      - lifeos-network
-
-  # Redis (Optional Cache)
-  redis:
-    image: redis:7-alpine
-    container_name: lifeos-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - lifeos-network
-
-volumes:
-  mongodb_data:
-  redis_data:
-
-networks:
-  lifeos-network:
-    driver: bridge
+    # Uncomment the next 2 lines if you're on Linux
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
