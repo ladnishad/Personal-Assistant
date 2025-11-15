@@ -50,11 +50,17 @@ def check_requirements(file_path):
         pytest_ver = packages['pytest']
         asyncio_ver = packages['pytest-asyncio']
 
+        # Extract major.minor version
+        pytest_major_minor = '.'.join(pytest_ver.split('.')[:2])
+
         if pytest_ver.startswith('8.') and asyncio_ver.startswith('0.23.'):
             issues.append("❌ pytest 8.x incompatible with pytest-asyncio 0.23.x")
             issues.append("   Fix: Use pytest-asyncio>=0.24.0")
-        elif pytest_ver.startswith('8.') and asyncio_ver >= '0.24.0':
-            print("✅ pytest + pytest-asyncio: Compatible")
+        elif asyncio_ver.startswith('0.24.') and pytest_major_minor < '8.2':
+            issues.append(f"❌ pytest {pytest_ver} incompatible with pytest-asyncio 0.24.x")
+            issues.append("   Fix: Use pytest>=8.2 for pytest-asyncio 0.24.x")
+        else:
+            print(f"✅ pytest {pytest_ver} + pytest-asyncio {asyncio_ver}: Compatible")
 
     # Check fastapi + starlette (starlette is auto-installed by fastapi)
     if 'fastapi' in packages:

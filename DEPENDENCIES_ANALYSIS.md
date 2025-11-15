@@ -10,10 +10,12 @@
 ## 🔍 Dependency Conflict Checks
 
 ### 1. ✅ pytest + pytest-asyncio
-- **pytest:** 8.0.0
+- **pytest:** 8.2.2
 - **pytest-asyncio:** 0.24.0
-- **Status:** Compatible (0.24.0 supports pytest 8.x)
-- **Fixed:** Updated from 0.23.4 → 0.24.0
+- **Status:** Compatible (0.24.0 requires pytest>=8.2)
+- **Fixed:**
+  - Updated pytest-asyncio from 0.23.4 → 0.24.0
+  - Updated pytest from 8.0.0 → 8.2.2 (required for 0.24.x compatibility)
 
 ### 2. ✅ FastAPI + Starlette
 - **fastapi:** 0.109.0
@@ -100,7 +102,7 @@ openai==1.10.0
 ├── typing-extensions>=4.7
 └── anyio>=3.5.0
 
-pytest==8.0.0
+pytest==8.2.2
 └── pytest-asyncio==0.24.0 ✅
     └── pytest>=8.0.0 (compatible!)
 ```
@@ -220,7 +222,7 @@ python3 check_dependencies.py
 | motor | 3.3.2 | MongoDB async driver |
 | beanie | 1.24.0 | MongoDB ODM |
 | openai | 1.10.0 | LLM API |
-| pytest | 8.0.0 | Testing framework |
+| pytest | 8.2.2 | Testing framework |
 | pytest-asyncio | 0.24.0 | Async testing |
 
 ---
