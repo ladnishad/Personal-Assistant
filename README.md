@@ -39,7 +39,6 @@ LifeOS is designed to:
 - Python 3.11+
 - Docker & Docker Compose (for containerized deployment)
 - **MongoDB running locally** (or MongoDB Atlas URI for production)
-- **Redis running locally** (optional, for caching)
 - OpenAI API key
 
 ### Installation
@@ -50,15 +49,11 @@ git clone <repository-url>
 cd Personal-Assistant
 ```
 
-2. **Start local services** (if not already running)
+2. **Start MongoDB locally** (if not already running)
 ```bash
 # MongoDB
 brew services start mongodb-community  # Mac
 # or: mongod  # Linux/Windows
-
-# Redis (optional)
-brew services start redis  # Mac
-# or: redis-server  # Linux/Windows
 ```
 
 3. **Set up environment variables**
@@ -72,7 +67,8 @@ cp .env.example .env
 
 4. **Run with Docker Compose** (Recommended)
 ```bash
-# The API will connect to your host's MongoDB (localhost:27017) and Redis (localhost:6379)
+# Starts the API container and Redis container
+# API connects to your host's MongoDB (localhost:27017)
 docker-compose up --build
 ```
 
@@ -95,7 +91,9 @@ uvicorn app.main:app --reload
 - **Health Check**: http://localhost:8000/health
 
 ### Important Notes
-- Docker setup connects to your **host's MongoDB and Redis** (not containerized)
+- Docker setup:
+  - **MongoDB**: Connects to your host's local MongoDB (not containerized)
+  - **Redis**: Runs in a Docker container
 - **Development**: Uses `mongodb://localhost:27017` from your `.env` file
 - **Production**: Update `MONGODB_URL` in `.env` to your production URI (MongoDB Atlas, etc.)
 

@@ -6,15 +6,37 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # Use host.docker.internal to connect to host's MongoDB/Redis on Mac/Windows
-      # For Linux, use: extra_hosts: - "host.docker.internal:host-gateway"
+      # MongoDB connects to host (your local MongoDB or production URI from .env)
+      # Redis runs in Docker container
       - MONGODB_URL=${MONGODB_URL:-mongodb://host.docker.internal:27017}
-      - REDIS_URL=${REDIS_URL:-redis://host.docker.internal:6379/0}
+      - REDIS_URL=redis://redis:6379/0
     env_file:
       - .env
     volumes:
       - .:/app
+    depends_on:
+      - redis
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - lifeos-network
     # Uncomment the next 2 lines if you're on Linux
     # extra_hosts:
     #   - "host.docker.internal:host-gateway"
+
+  # Redis (Cache)
+  redis:
+    image: redis:7-alpine
+    container_name: lifeos-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - lifeos-network
+
+volumes:
+  redis_data:
+
+networks:
+  lifeos-network:
+    driver: bridge
