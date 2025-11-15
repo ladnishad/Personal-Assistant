@@ -56,6 +56,6 @@ aiofiles==23.2.1
 ruff==0.1.14
 black==24.1.1
 pytest==8.0.0
-pytest-asyncio==0.23.4
+pytest-asyncio==0.24.0
 pytest-cov==4.1.0
 pre-commit==3.6.0
