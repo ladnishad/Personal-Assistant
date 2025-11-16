@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 
-from beanie import Document, PydanticObjectId
+from beanie import Document, Indexed, PydanticObjectId
 from pydantic import Field
 
 
@@ -22,11 +22,11 @@ class MemoryType(str, Enum):
 class Memory(Document):
     """Memory document model for long-term storage."""
 
-    user_id: PydanticObjectId = Field(..., index=True)
+    user_id: Indexed(PydanticObjectId)
 
     # Memory content
     content: str
-    memory_type: MemoryType
+    memory_type: Indexed(MemoryType)
     category: Optional[str] = None
 
     # Source tracking
@@ -49,13 +49,12 @@ class Memory(Document):
     embedded_at: Optional[datetime] = None
 
     # Timestamps
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: Indexed(datetime, index_type=-1)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Settings:
         name = "memories"
         indexes = [
-            "user_id",
             [("user_id", 1), ("memory_type", 1)],
             [("user_id", 1), ("created_at", -1)],
         ]

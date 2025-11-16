@@ -3,14 +3,14 @@
 from datetime import datetime
 from typing import Optional
 
-from beanie import Document
+from beanie import Document, Indexed
 from pydantic import EmailStr, Field
 
 
 class User(Document):
     """User document model."""
 
-    email: EmailStr = Field(..., unique=True, index=True)
+    email: Indexed(EmailStr, unique=True)
     hashed_password: str
     full_name: Optional[str] = None
     is_active: bool = Field(default=True)
@@ -24,9 +24,6 @@ class User(Document):
 
     class Settings:
         name = "users"
-        indexes = [
-            "email",
-        ]
 
     class Config:
         json_schema_extra = {

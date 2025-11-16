@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from beanie import Document
+from beanie import Document, Indexed
 from pydantic import Field
 from beanie import PydanticObjectId
 
@@ -19,8 +19,8 @@ class IntegrationType(str, Enum):
 class Integration(Document):
     """Integration document model for OAuth connections."""
 
-    user_id: PydanticObjectId = Field(..., index=True)
-    integration_type: IntegrationType
+    user_id: Indexed(PydanticObjectId)
+    integration_type: Indexed(IntegrationType)
     is_active: bool = Field(default=True)
 
     # OAuth tokens
@@ -46,7 +46,6 @@ class Integration(Document):
     class Settings:
         name = "integrations"
         indexes = [
-            "user_id",
             [("user_id", 1), ("integration_type", 1)],
         ]
 

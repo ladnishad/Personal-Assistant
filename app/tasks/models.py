@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 
-from beanie import Document, PydanticObjectId
+from beanie import Document, Indexed, PydanticObjectId
 from pydantic import Field
 
 
@@ -29,16 +29,16 @@ class TaskPriority(str, Enum):
 class Task(Document):
     """Task document model."""
 
-    user_id: PydanticObjectId = Field(..., index=True)
+    user_id: Indexed(PydanticObjectId)
 
     # Task details
     title: str
     description: Optional[str] = None
-    status: TaskStatus = Field(default=TaskStatus.TODO)
+    status: Indexed(TaskStatus, index_type=1)
     priority: TaskPriority = Field(default=TaskPriority.MEDIUM)
 
     # Dates
-    due_date: Optional[datetime] = None
+    due_date: Optional[Indexed(datetime)] = None
     completed_at: Optional[datetime] = None
 
     # Source tracking
@@ -64,7 +64,6 @@ class Task(Document):
     class Settings:
         name = "tasks"
         indexes = [
-            "user_id",
             [("user_id", 1), ("status", 1)],
             [("user_id", 1), ("due_date", 1)],
         ]

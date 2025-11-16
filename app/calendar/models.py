@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 
-from beanie import Document, PydanticObjectId
+from beanie import Document, Indexed, PydanticObjectId
 from pydantic import Field
 
 
@@ -19,11 +19,11 @@ class EventStatus(str, Enum):
 class CalendarEvent(Document):
     """Calendar event document model."""
 
-    user_id: PydanticObjectId = Field(..., index=True)
-    integration_id: PydanticObjectId = Field(..., index=True)
+    user_id: Indexed(PydanticObjectId)
+    integration_id: Indexed(PydanticObjectId)
 
     # Event identifiers
-    event_id: str = Field(..., unique=True, index=True)
+    event_id: Indexed(str, unique=True)
     calendar_id: Optional[str] = None
 
     # Event details
@@ -32,7 +32,7 @@ class CalendarEvent(Document):
     location: Optional[str] = None
 
     # Time
-    start_time: datetime
+    start_time: Indexed(datetime)
     end_time: datetime
     timezone: str = Field(default="UTC")
     is_all_day: bool = Field(default=False)
@@ -63,8 +63,6 @@ class CalendarEvent(Document):
     class Settings:
         name = "calendar_events"
         indexes = [
-            "user_id",
-            "event_id",
             [("user_id", 1), ("start_time", 1)],
         ]
 

@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 
-from beanie import Document
+from beanie import Document, Indexed
 from beanie import PydanticObjectId
 from pydantic import Field
 
@@ -42,11 +42,11 @@ class EmailAttachment(Document):
 class Email(Document):
     """Email document model."""
 
-    user_id: PydanticObjectId = Field(..., index=True)
-    integration_id: PydanticObjectId = Field(..., index=True)
+    user_id: Indexed(PydanticObjectId)
+    integration_id: Indexed(PydanticObjectId)
 
     # Email identifiers
-    message_id: str = Field(..., unique=True, index=True)
+    message_id: Indexed(str, unique=True)
     thread_id: Optional[str] = None
 
     # Email metadata
@@ -68,9 +68,9 @@ class Email(Document):
 
     # Metadata
     labels: List[EmailLabel] = Field(default_factory=list)
-    is_read: bool = Field(default=False)
+    is_read: bool = Field(default=False, index=True)
     is_starred: bool = Field(default=False)
-    received_at: datetime
+    received_at: Indexed(datetime, index_type=-1)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Entity extraction results
@@ -84,8 +84,6 @@ class Email(Document):
     class Settings:
         name = "emails"
         indexes = [
-            "user_id",
-            "message_id",
             [("user_id", 1), ("received_at", -1)],
             [("user_id", 1), ("is_read", 1)],
         ]
