@@ -19,16 +19,42 @@ openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
 class AgentService:
     """AI Agent orchestrator using LLM with function calling."""
 
-    SYSTEM_PROMPT = """You are a personal AI life assistant. Your role is to help users manage their digital life by:
-- Understanding their emails, calendar, and tasks
-- Extracting important information and creating actionable items
-- Maintaining long-term memory of preferences and context
-- Being proactive with suggestions and reminders
-- Executing tasks autonomously when appropriate
+    SYSTEM_PROMPT = """You are a personal AI life assistant with LONG-TERM MEMORY. Your role is to:
+- Help users manage their digital life (emails, calendar, tasks)
+- **LEARN about the user and REMEMBER important information**
+- Extract meaningful information and create actionable items
+- Be proactive with suggestions based on what you know about them
+- Execute tasks autonomously when appropriate
 
-You have access to tools to search emails, manage tasks, and retrieve memories. Use these tools to provide helpful, contextual responses.
+**CRITICAL - MEMORY FUNCTIONALITY:**
+You MUST actively use the `save_memory` tool to remember:
+1. **Relationships**: Family members, friends, colleagues (names, relationships)
+   - Example: User mentions "my mom Neeta is calling" → save "User's mother is named Neeta Lad"
 
-Be conversational, helpful, and proactive. When you identify actionable items from the conversation, create tasks automatically."""
+2. **Preferences**: Likes, dislikes, habits
+   - Example: "I don't drink" → save "User doesn't consume alcohol"
+
+3. **Routines**: Regular patterns, schedules
+   - Example: "I work out every morning at 6" → save "User exercises daily at 6 AM"
+
+4. **Facts**: Important information about the user
+   - Example: "I'm allergic to peanuts" → save "User has peanut allergy"
+
+5. **Context**: Any situational or background information worth remembering
+
+**WHEN TO SAVE:**
+- Whenever the user mentions a family member, friend, or colleague name
+- When you learn about likes/dislikes
+- When you discover preferences, routines, or habits
+- When you learn facts about their life, work, health
+- IMMEDIATELY when you encounter new information
+
+**HOW TO RESPOND:**
+- After saving important info, acknowledge naturally (e.g., "Got it, I'll remember that your mother is Neeta!")
+- Use saved memories to personalize future responses
+- Search memory when relevant to provide context-aware help
+
+You have access to tools for emails, tasks, and MEMORY. Use them proactively to provide personalized, contextual assistance."""
 
     @staticmethod
     async def chat(
@@ -36,27 +62,48 @@ Be conversational, helpful, and proactive. When you identify actionable items fr
     ) -> Dict[str, Any]:
         """Process user message with agent orchestrator."""
         try:
+            # Extract any @remember commands from message
+            remember_commands = AgentTools.extract_remember_commands(message)
+            clean_msg = AgentTools.clean_message(message)
+
+            # Process @remember commands first
+            remember_responses = []
+            if remember_commands:
+                for mem_content in remember_commands:
+                    result = await AgentTools.save_memory(
+                        user_id=user_id,
+                        content=mem_content,
+                        memory_type="note",  # @remember is explicitly user-requested
+                        importance=0.9,  # High importance for explicit requests
+                    )
+                    if result.get("saved"):
+                        remember_responses.append(f"✓ Remembered: {mem_content}")
+
+                logger.info(f"Saved {len(remember_commands)} @remember commands for user {user_id}")
+
             # Build messages
             messages = [
                 {"role": "system", "content": AgentService.SYSTEM_PROMPT},
-                {"role": "user", "content": message},
+                {"role": "user", "content": clean_msg or message},
             ]
 
             # Optionally retrieve relevant memories for context
             context_memories = []
             if use_memory:
-                context_memories = await AgentTools.search_memory(user_id, message, limit=3)
+                context_memories = await AgentTools.search_memory(user_id, clean_msg or message, limit=5)
                 if context_memories:
                     context_text = "\n".join(
-                        [f"- {m['content']}" for m in context_memories]
+                        [f"- {m['content']} (type: {m['type']}, importance: {m['importance']:.1f})"
+                         for m in context_memories]
                     )
                     messages.insert(
                         1,
                         {
                             "role": "system",
-                            "content": f"Relevant context from memory:\n{context_text}",
+                            "content": f"Relevant memories about this user:\n{context_text}\n\nUse this context to personalize your response.",
                         },
                     )
+                    logger.info(f"Retrieved {len(context_memories)} memories for context")
 
             # Get tool definitions
             tools = AgentTools.get_tool_definitions()
@@ -120,11 +167,16 @@ Be conversational, helpful, and proactive. When you identify actionable items fr
             else:
                 final_message = assistant_message.content
 
+            # Prepend @remember confirmations to response if any
+            if remember_responses:
+                final_message = "\n".join(remember_responses) + "\n\n" + final_message
+
             return {
                 "message": final_message,
                 "tools_used": tools_used,
                 "context_retrieved": len(context_memories),
                 "actions_taken": actions_taken,
+                "memories_saved": len(remember_commands) + sum(1 for a in actions_taken if a["tool"] == "save_memory"),
             }
 
         except Exception as e:
@@ -134,6 +186,7 @@ Be conversational, helpful, and proactive. When you identify actionable items fr
                 "tools_used": [],
                 "context_retrieved": 0,
                 "actions_taken": [],
+                "memories_saved": 0,
             }
 
     @staticmethod
@@ -150,6 +203,8 @@ Be conversational, helpful, and proactive. When you identify actionable items fr
                 return await AgentTools.get_tasks(user_id, **tool_args)
             elif tool_name == "search_memory":
                 return await AgentTools.search_memory(user_id, **tool_args)
+            elif tool_name == "save_memory":
+                return await AgentTools.save_memory(user_id, **tool_args)
             else:
                 return {"error": f"Unknown tool: {tool_name}"}
         except Exception as e:
