@@ -34,11 +34,11 @@ class Task(Document):
     # Task details
     title: str
     description: Optional[str] = None
-    status: Indexed(TaskStatus, index_type=1)
+    status: TaskStatus = Field(default=TaskStatus.TODO)  # Cannot use Indexed() with Enums
     priority: TaskPriority = Field(default=TaskPriority.MEDIUM)
 
     # Dates
-    due_date: Optional[Indexed(datetime)] = None
+    due_date: Optional[datetime] = None
     completed_at: Optional[datetime] = None
 
     # Source tracking

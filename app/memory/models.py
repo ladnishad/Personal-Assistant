@@ -26,7 +26,7 @@ class Memory(Document):
 
     # Memory content
     content: str
-    memory_type: Indexed(MemoryType)
+    memory_type: MemoryType  # Cannot use Indexed() with Enums
     category: Optional[str] = None
 
     # Source tracking
@@ -49,7 +49,7 @@ class Memory(Document):
     embedded_at: Optional[datetime] = None
 
     # Timestamps
-    created_at: Indexed(datetime, index_type=-1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Settings:

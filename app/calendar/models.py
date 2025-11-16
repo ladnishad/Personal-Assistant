@@ -32,7 +32,7 @@ class CalendarEvent(Document):
     location: Optional[str] = None
 
     # Time
-    start_time: Indexed(datetime)
+    start_time: datetime
     end_time: datetime
     timezone: str = Field(default="UTC")
     is_all_day: bool = Field(default=False)

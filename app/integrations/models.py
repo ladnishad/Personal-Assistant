@@ -20,7 +20,7 @@ class Integration(Document):
     """Integration document model for OAuth connections."""
 
     user_id: Indexed(PydanticObjectId)
-    integration_type: Indexed(IntegrationType)
+    integration_type: IntegrationType  # Cannot use Indexed() with Enums
     is_active: bool = Field(default=True)
 
     # OAuth tokens

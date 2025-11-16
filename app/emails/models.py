@@ -68,9 +68,9 @@ class Email(Document):
 
     # Metadata
     labels: List[EmailLabel] = Field(default_factory=list)
-    is_read: bool = Field(default=False, index=True)
+    is_read: bool = Field(default=False)
     is_starred: bool = Field(default=False)
-    received_at: Indexed(datetime, index_type=-1)
+    received_at: datetime
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Entity extraction results
