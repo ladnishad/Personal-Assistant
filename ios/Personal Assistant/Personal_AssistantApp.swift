@@ -23,3 +23,15 @@ struct Personal_AssistantApp: App {
         }
     }
 }
+
+#Preview("Login State") {
+    LoginView()
+        .environmentObject(AuthViewModel())
+}
+
+#Preview("Authenticated State") {
+    let authViewModel = AuthViewModel()
+    authViewModel.isAuthenticated = true
+    return MainTabView()
+        .environmentObject(authViewModel)
+}
