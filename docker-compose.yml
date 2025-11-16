@@ -5,13 +5,13 @@ services:
     container_name: lifeos-api
     ports:
       - "8000:8000"
-    environment:
-      # MongoDB connects to host (your local MongoDB or production URI from .env)
-      # Redis runs in Docker container
-      - MONGODB_URL=${MONGODB_URL:-mongodb://host.docker.internal:27017}
-      - REDIS_URL=redis://redis:6379/0
     env_file:
       - .env
+    environment:
+      # Override MongoDB URL to connect to host machine (not localhost inside container)
+      # Redis connects to the redis container in the Docker network
+      - MONGODB_URL=mongodb://host.docker.internal:27017
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - .:/app
     depends_on:
