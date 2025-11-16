@@ -9,7 +9,7 @@ import SwiftUI
 
 struct RegisterView: View {
     @Environment(\.dismiss) var dismiss
-    @StateObject private var viewModel = AuthViewModel()
+    @EnvironmentObject var viewModel: AuthViewModel
     @State private var email = ""
     @State private var password = ""
     @State private var confirmPassword = ""
