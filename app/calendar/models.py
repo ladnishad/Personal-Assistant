@@ -23,7 +23,7 @@ class CalendarEvent(Document):
     integration_id: Indexed(PydanticObjectId)
 
     # Event identifiers
-    event_id: Indexed(str, unique=True)
+    event_id: str  # Unique index defined in Settings.indexes
     calendar_id: Optional[str] = None
 
     # Event details
@@ -64,6 +64,13 @@ class CalendarEvent(Document):
         name = "calendar_events"
         indexes = [
             [("user_id", 1), ("start_time", 1)],
+            [
+                ("event_id", 1),
+                {
+                    "name": "calendar_event_id_unique_idx",
+                    "unique": True,
+                },
+            ],
         ]
 
     class Config:

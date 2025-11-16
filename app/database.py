@@ -18,6 +18,33 @@ class Database:
     db = None
 
     @classmethod
+    async def _cleanup_conflicting_indexes(cls):
+        """Drop specific conflicting indexes that prevent Beanie initialization.
+
+        This removes auto-generated indexes that conflict with our explicit
+        index definitions (e.g., indexes with same name but different specs).
+        """
+        collections_to_clean = {
+            "emails": ["message_id_1"],
+            "calendar_events": ["event_id_1"],
+        }
+
+        for collection_name, index_names in collections_to_clean.items():
+            collection = cls.db[collection_name]
+
+            for index_name in index_names:
+                try:
+                    await collection.drop_index(index_name)
+                    logger.info(
+                        f"Dropped conflicting index '{index_name}' from '{collection_name}'"
+                    )
+                except Exception as e:
+                    # Index might not exist, which is fine
+                    logger.debug(
+                        f"Could not drop index '{index_name}' from '{collection_name}': {e}"
+                    )
+
+    @classmethod
     async def connect_db(cls):
         """Initialize MongoDB connection and Beanie ODM."""
         try:
@@ -30,6 +57,9 @@ class Database:
             )
 
             cls.db = cls.client[settings.mongodb_db_name]
+
+            # Clean up conflicting indexes before Beanie initialization
+            await cls._cleanup_conflicting_indexes()
 
             # Import all document models for Beanie
             from app.auth.models import User
