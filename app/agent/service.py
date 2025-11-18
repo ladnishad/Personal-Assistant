@@ -8,6 +8,8 @@ from agents import Agent, Runner
 from beanie import PydanticObjectId
 
 from app.agent.guardrails import OUTPUT_GUARDRAILS
+from app.agent.package_agent import create_package_tracking_agent
+from app.agent.package_tools import set_package_user_id
 from app.agent.session import MongoDBConversationSession
 from app.agent.tools import (
     AGENT_TOOLS,
@@ -28,12 +30,13 @@ class AgentService:
     """AI Agent orchestrator using OpenAI Agents SDK."""
 
     SYSTEM_PROMPT = """You are a personal AI life assistant with LONG-TERM MEMORY. Your role is to:
-- Help users manage their digital life (emails, calendar, tasks)
+- Help users manage their digital life (emails, calendar, tasks, packages)
 - **LEARN about the user and REMEMBER important information**
 - Extract meaningful information and create actionable items
 - Be proactive with suggestions based on what you know about them
 - Execute tasks autonomously when appropriate
 - **Help users work on specific tasks by researching and documenting information**
+- **Track and monitor package deliveries automatically**
 
 **CRITICAL - TASK CREATION:**
 You MUST use the `create_task` tool when users ask you to:
@@ -128,7 +131,12 @@ You MUST actively use the `save_memory` tool to remember:
 - Use saved memories to personalize future responses
 - Search memory when relevant to provide context-aware help
 
-You have access to tools for emails, tasks, web search, and MEMORY. Use them proactively to provide personalized, contextual assistance."""
+**PACKAGE TRACKING:**
+When users ask about packages, deliveries, or tracking:
+- Transfer to the Package Tracking Specialist agent
+- This agent can detect packages from emails, track shipments, and provide delivery updates
+
+You have access to tools for emails, tasks, web search, MEMORY, and package tracking. Use them proactively to provide personalized, contextual assistance."""
 
     @staticmethod
     async def _ensure_user_profile_memory(user: User) -> None:
@@ -250,13 +258,21 @@ You already know this basic information about the user, so don't ask for it."""
             # Build system instructions
             instructions = AgentService._get_system_instructions(user, context_memories)
 
-            # Create agent with guardrails
+            # Set user context for package tools (using contextvars for async-safe context)
+            # This must be set before creating agents so tools can access user_id
+            set_package_user_id(user_id)
+
+            # Create package tracking agent (will use contextvar user_id in tools)
+            package_agent = create_package_tracking_agent()
+
+            # Create agent with guardrails and handoffs
             agent = Agent(
                 name="LifeOS Assistant",
                 instructions=instructions,
                 tools=AGENT_TOOLS,
                 model=settings.openai_model,
                 output_guardrails=OUTPUT_GUARDRAILS,
+                handoffs=[package_agent],  # Add package tracking agent as handoff
             )
 
             # Create session for conversation history

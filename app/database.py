@@ -66,8 +66,10 @@ class Database:
             from app.calendar.models import CalendarEvent
             from app.conversations.models import Conversation, ConversationMessage
             from app.emails.models import Email
+            from app.emails.relationships import EmailRelationship
             from app.integrations.models import Integration
             from app.memory.models import Memory
+            from app.packages.models import Package
             from app.tasks.models import Task
 
             # Initialize Beanie with all document models
@@ -77,11 +79,13 @@ class Database:
                     User,
                     Integration,
                     Email,
+                    EmailRelationship,  # Email relationship graph for package tracking
                     CalendarEvent,
                     Task,
                     Memory,
                     Conversation,
                     ConversationMessage,
+                    Package,  # Package model for tracking with email relationships
                 ],
             )
 

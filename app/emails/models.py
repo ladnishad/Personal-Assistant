@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from beanie import Document, Indexed
 from beanie import PydanticObjectId
@@ -74,9 +74,15 @@ class Email(Document):
     received_at: datetime
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    # Entity extraction results
-    extracted_entities: dict = Field(default_factory=dict)
+    # Entity extraction results (structured)
+    extracted_entities: Optional[Dict] = None  # EmailEntity as dict
     entities_extracted_at: Optional[datetime] = None
+
+    # Email relationships
+    related_email_ids: List[PydanticObjectId] = Field(default_factory=list)
+    relationship_types: Dict[str, str] = Field(
+        default_factory=dict
+    )  # {email_id: "same_order", ...}
 
     # Embeddings for semantic search
     embedding: Optional[List[float]] = None

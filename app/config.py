@@ -90,6 +90,15 @@ class Settings(BaseSettings):
     reminder_check_interval_minutes: int = Field(
         default=5, alias="REMINDER_CHECK_INTERVAL_MINUTES"
     )
+    package_email_check_interval_minutes: int = Field(
+        default=15, alias="PACKAGE_EMAIL_CHECK_INTERVAL_MINUTES"
+    )
+    package_status_update_interval_minutes: int = Field(
+        default=120, alias="PACKAGE_STATUS_UPDATE_INTERVAL_MINUTES"
+    )
+
+    # Package Tracking / AfterShip API
+    aftership_api_key: str = Field(default="", alias="AFTERSHIP_API_KEY")
 
     # CORS
     cors_origins: Union[List[str], str] = Field(
