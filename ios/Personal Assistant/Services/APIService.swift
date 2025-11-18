@@ -80,8 +80,13 @@ class APIService {
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        if requiresAuth, let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if requiresAuth {
+            if let token = accessToken {
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                print("🔑 Using token for \(endpoint): \(token.prefix(20))...")
+            } else {
+                print("❌ No access token available for \(endpoint)")
+            }
         }
 
         if let body = body {
@@ -100,6 +105,10 @@ class APIService {
                 return try decoder.decode(T.self, from: data)
             } catch {
                 print("Decoding error: \(error)")
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("Response data: \(responseString)")
+                }
+                print("Expected type: \(T.self)")
                 throw APIError.decodingError
             }
         case 401:
@@ -171,7 +180,7 @@ class APIService {
     // MARK: - Emails
 
     func getEmails(page: Int = 1, pageSize: Int = 50, isRead: Bool? = nil, search: String? = nil) async throws -> EmailListResponse {
-        var endpoint = "/emails?page=\(page)&page_size=\(pageSize)"
+        var endpoint = "/emails/?page=\(page)&page_size=\(pageSize)"
         if let isRead = isRead {
             endpoint += "&is_read=\(isRead)"
         }
@@ -210,15 +219,19 @@ class APIService {
     // MARK: - Tasks
 
     func getTasks(status: TaskStatus? = nil, page: Int = 1, pageSize: Int = 50) async throws -> TaskListResponse {
-        var endpoint = "/tasks?page=\(page)&page_size=\(pageSize)"
+        var endpoint = "/tasks/?page=\(page)&page_size=\(pageSize)"
         if let status = status {
             endpoint += "&status=\(status.rawValue)"
         }
         return try await request(endpoint: endpoint, requiresAuth: true)
     }
 
+    func getTask(id: String) async throws -> TaskItem {
+        return try await request(endpoint: "/tasks/\(id)", requiresAuth: true)
+    }
+
     func createTask(_ task: TaskCreateRequest) async throws -> TaskItem {
-        return try await request(endpoint: "/tasks", method: "POST", body: task, requiresAuth: true)
+        return try await request(endpoint: "/tasks/", method: "POST", body: task, requiresAuth: true)
     }
 
     func updateTask(id: String, status: TaskStatus) async throws -> TaskItem {
@@ -228,6 +241,13 @@ class APIService {
         return try await request(endpoint: "/tasks/\(id)", method: "PATCH", body: UpdateRequest(status: status), requiresAuth: true)
     }
 
+    func updateTaskContent(id: String, content: String) async throws -> TaskItem {
+        struct UpdateRequest: Codable {
+            let content: String
+        }
+        return try await request(endpoint: "/tasks/\(id)", method: "PATCH", body: UpdateRequest(content: content), requiresAuth: true)
+    }
+
     func deleteTask(id: String) async throws {
         struct Empty: Codable {}
         let _: Empty = try await request(endpoint: "/tasks/\(id)", method: "DELETE", requiresAuth: true)
@@ -235,8 +255,36 @@ class APIService {
 
     // MARK: - Agent Chat
 
-    func sendChatMessage(message: String, useMemory: Bool = true) async throws -> AgentChatResponse {
-        let request = AgentChatRequest(message: message, context: nil, useMemory: useMemory)
+    func sendChatMessage(
+        message: String,
+        useMemory: Bool = true,
+        conversationId: String? = nil,
+        conversationHistory: [ConversationHistoryMessage]? = nil
+    ) async throws -> AgentChatResponse {
+        let request = AgentChatRequest(
+            message: message,
+            context: nil,
+            useMemory: useMemory,
+            conversationId: conversationId,
+            conversationHistory: conversationHistory
+        )
         return try await self.request(endpoint: "/agent/chat", method: "POST", body: request, requiresAuth: true)
+    }
+
+    // MARK: - Conversations
+
+    func getConversations(page: Int = 1, pageSize: Int = 50) async throws -> ConversationListResponse {
+        let endpoint = "/conversations/?page=\(page)&page_size=\(pageSize)"
+        return try await request(endpoint: endpoint, requiresAuth: true)
+    }
+
+    func getConversation(id: String) async throws -> ConversationWithMessages {
+        let endpoint = "/conversations/\(id)"
+        return try await request(endpoint: endpoint, requiresAuth: true)
+    }
+
+    func deleteConversation(id: String) async throws {
+        struct Empty: Codable {}
+        let _: Empty = try await request(endpoint: "/conversations/\(id)", method: "DELETE", requiresAuth: true)
     }
 }

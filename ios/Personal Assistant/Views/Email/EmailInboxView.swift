@@ -24,7 +24,7 @@ struct EmailInboxView: View {
                 }
             }
             .navigationTitle("Inbox")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack(spacing: 16) {

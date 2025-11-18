@@ -6,6 +6,7 @@ from typing import List, Optional
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import Field
+from pymongo import IndexModel
 
 
 class EventStatus(str, Enum):
@@ -64,13 +65,7 @@ class CalendarEvent(Document):
         name = "calendar_events"
         indexes = [
             [("user_id", 1), ("start_time", 1)],
-            [
-                ("event_id", 1),
-                {
-                    "name": "calendar_event_id_unique_idx",
-                    "unique": True,
-                },
-            ],
+            IndexModel([("event_id", 1)], name="calendar_event_id_unique_idx", unique=True),
         ]
 
     class Config:

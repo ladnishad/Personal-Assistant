@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
 from app.tasks.models import TaskPriority, TaskStatus
 
@@ -31,12 +31,13 @@ class TaskUpdate(BaseModel):
     reminder_at: Optional[datetime] = None
     tags: Optional[List[str]] = None
     category: Optional[str] = None
+    content: Optional[str] = None
 
 
 class TaskResponse(BaseModel):
     """Task response."""
 
-    id: str = Field(..., alias="_id")
+    id: str = Field(..., serialization_alias="_id")
     user_id: str
     title: str
     description: Optional[str] = None
@@ -48,11 +49,20 @@ class TaskResponse(BaseModel):
     reminder_sent: bool
     tags: List[str]
     category: Optional[str] = None
+    content: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        populate_by_name = True
+    @field_serializer('created_at', 'updated_at', 'due_date', 'completed_at', 'reminder_at')
+    def serialize_datetime(self, dt: Optional[datetime], _info):
+        """Serialize datetime to ISO8601 format without microseconds."""
+        if dt is None:
+            return None
+        return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    model_config = {
+        "populate_by_name": True
+    }
 
 
 class TaskListResponse(BaseModel):

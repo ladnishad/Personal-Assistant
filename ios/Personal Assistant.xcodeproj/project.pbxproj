@@ -112,6 +112,7 @@
 			);
 			name = "Personal Assistant";
 			packageProductDependencies = (
+				00MARKDOWN02 /* MarkdownUI */,
 			);
 			productName = "Personal Assistant";
 			productReference = 00C714942EC8E3CD005958E5 /* Personal Assistant.app */;
@@ -195,6 +196,9 @@
 			);
 			mainGroup = 00C7148B2EC8E3CD005958E5;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				00MARKDOWN01 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 00C714952EC8E3CD005958E5 /* Products */;
 			projectDirPath = "";
@@ -578,6 +582,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		00MARKDOWN01 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/gonzalezreal/swift-markdown-ui";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		00MARKDOWN02 /* MarkdownUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 00MARKDOWN01 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
+			productName = MarkdownUI;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 00C7148C2EC8E3CD005958E5 /* Project object */;
 }

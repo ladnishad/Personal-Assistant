@@ -20,6 +20,7 @@ struct TaskItem: Codable, Identifiable {
     let reminderSent: Bool
     let tags: [String]
     let category: String?
+    let content: String?
     let createdAt: Date
     let updatedAt: Date
 
@@ -31,7 +32,7 @@ struct TaskItem: Codable, Identifiable {
         case completedAt = "completed_at"
         case reminderAt = "reminder_at"
         case reminderSent = "reminder_sent"
-        case tags, category
+        case tags, category, content
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }

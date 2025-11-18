@@ -74,8 +74,13 @@ class GoogleService:
         return authorization_url
 
     @staticmethod
-    async def exchange_code_for_tokens(code: str) -> dict:
+    async def exchange_code_for_tokens(code: str, scopes: list[str] = None) -> dict:
         """Exchange authorization code for access and refresh tokens."""
+        # Use provided scopes or default to empty list
+        # Google will use the scopes from the original authorization request
+        if scopes is None:
+            scopes = []
+
         flow = Flow.from_client_config(
             {
                 "web": {
@@ -86,7 +91,7 @@ class GoogleService:
                     "redirect_uris": [settings.google_redirect_uri],
                 }
             },
-            scopes=[],
+            scopes=scopes,
             redirect_uri=settings.google_redirect_uri,
         )
 

@@ -70,13 +70,17 @@ class MicrosoftService:
         return auth_url
 
     @staticmethod
-    async def exchange_code_for_tokens(code: str) -> dict:
+    async def exchange_code_for_tokens(code: str, scopes: list[str] = None) -> dict:
         """Exchange authorization code for access and refresh tokens."""
         app = MicrosoftService._get_msal_app()
 
+        # Use provided scopes or default to USER_SCOPES
+        if scopes is None:
+            scopes = MicrosoftService.USER_SCOPES
+
         result = app.acquire_token_by_authorization_code(
             code=code,
-            scopes=MicrosoftService.USER_SCOPES,
+            scopes=scopes,
             redirect_uri=settings.microsoft_redirect_uri,
         )
 

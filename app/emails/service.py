@@ -59,7 +59,7 @@ class EmailService:
 
         try:
             # Fetch emails from Gmail
-            emails_data, _ = await GmailService.fetch_emails(integration, max_results=50)
+            emails_data, _ = await GmailService.fetch_emails(integration, max_results=10)
 
             for email_data in emails_data:
                 # Check if email already exists

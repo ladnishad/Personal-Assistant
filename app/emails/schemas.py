@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_serializer
 
 from app.emails.models import EmailLabel
 
@@ -20,7 +20,7 @@ class EmailAttachmentResponse(BaseModel):
 class EmailResponse(BaseModel):
     """Email response model."""
 
-    id: str = Field(..., alias="_id")
+    id: str = Field(..., serialization_alias="_id")
     user_id: str
     message_id: str
     from_email: EmailStr
@@ -38,8 +38,14 @@ class EmailResponse(BaseModel):
     received_at: datetime
     extracted_entities: dict = Field(default_factory=dict)
 
-    class Config:
-        populate_by_name = True
+    @field_serializer('received_at')
+    def serialize_datetime(self, dt: datetime, _info):
+        """Serialize datetime to ISO8601 format without microseconds."""
+        return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    model_config = {
+        "populate_by_name": True
+    }
 
 
 class EmailListResponse(BaseModel):

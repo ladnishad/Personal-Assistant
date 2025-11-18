@@ -7,6 +7,7 @@ from typing import List, Optional
 from beanie import Document, Indexed
 from beanie import PydanticObjectId
 from pydantic import Field
+from pymongo import IndexModel
 
 
 class EmailLabel(str, Enum):
@@ -86,13 +87,7 @@ class Email(Document):
         indexes = [
             [("user_id", 1), ("received_at", -1)],
             [("user_id", 1), ("is_read", 1)],
-            [
-                ("message_id", 1),
-                {
-                    "name": "email_message_id_unique_idx",
-                    "unique": True,
-                },
-            ],
+            IndexModel([("message_id", 1)], name="email_message_id_unique_idx", unique=True),
         ]
 
     class Config:

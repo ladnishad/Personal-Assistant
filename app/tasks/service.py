@@ -24,6 +24,16 @@ class TaskService:
         return task
 
     @staticmethod
+    async def get_task(task_id: str, user_id: PydanticObjectId) -> Task:
+        """Get a single task by ID."""
+        task = await Task.get(task_id)
+
+        if not task or task.user_id != user_id:
+            raise ValueError("Task not found")
+
+        return task
+
+    @staticmethod
     async def update_task(
         task_id: str, user_id: PydanticObjectId, task_data: TaskUpdate
     ) -> Task:

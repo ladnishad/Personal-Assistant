@@ -45,7 +45,7 @@ async def list_emails(
 
     email_responses = [
         EmailResponse(
-            _id=str(e.id),
+            id=str(e.id),
             user_id=str(e.user_id),
             message_id=e.message_id,
             from_email=e.from_email,
@@ -90,7 +90,7 @@ async def get_email(
         )
 
     return EmailResponse(
-        _id=str(email.id),
+        id=str(email.id),
         user_id=str(email.user_id),
         message_id=email.message_id,
         from_email=email.from_email,

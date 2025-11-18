@@ -24,7 +24,7 @@ struct MainTabView: View {
                 }
                 .tag(1)
 
-            AgentChatView()
+            ConversationsListView()
                 .tabItem {
                     Label("Assistant", systemImage: "brain.head.profile")
                 }

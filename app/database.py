@@ -64,6 +64,7 @@ class Database:
             # Import all document models for Beanie
             from app.auth.models import User
             from app.calendar.models import CalendarEvent
+            from app.conversations.models import Conversation, ConversationMessage
             from app.emails.models import Email
             from app.integrations.models import Integration
             from app.memory.models import Memory
@@ -79,6 +80,8 @@ class Database:
                     CalendarEvent,
                     Task,
                     Memory,
+                    Conversation,
+                    ConversationMessage,
                 ],
             )
 

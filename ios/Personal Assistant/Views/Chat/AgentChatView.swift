@@ -8,8 +8,12 @@
 import SwiftUI
 
 struct AgentChatView: View {
-    @StateObject private var viewModel = ChatViewModel()
+    @StateObject private var viewModel: ChatViewModel
     @FocusState private var isInputFocused: Bool
+
+    init(conversationId: String? = nil) {
+        _viewModel = StateObject(wrappedValue: ChatViewModel(conversationId: conversationId))
+    }
 
     var body: some View {
         NavigationStack {
@@ -90,52 +94,235 @@ struct AgentChatView: View {
                     }
                 }
             }
+            .task {
+                // Load conversation if conversationId is provided
+                if let conversationId = viewModel.conversationId, viewModel.messages.isEmpty {
+                    await viewModel.loadConversation(id: conversationId)
+                }
+            }
         }
     }
 }
 
 struct MessageBubble: View {
     let message: ChatMessage
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        HStack {
+        HStack(alignment: .top, spacing: 12) {
             if message.role == .user {
-                Spacer(minLength: 60)
+                Spacer(minLength: 50)
+            } else {
+                aiAvatar
             }
 
-            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 8) {
-                Text(message.content)
-                    .font(.body)
-                    .padding(12)
-                    .background(
-                        message.role == .user ?
-                            LinearGradient(colors: [.blue, .purple], startPoint: .leading, endPoint: .trailing) :
-                            LinearGradient(colors: [Color(.systemGray6)], startPoint: .leading, endPoint: .trailing)
-                    )
-                    .foregroundColor(message.role == .user ? .white : .primary)
-                    .cornerRadius(16)
+            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 10) {
+                messageContentView
 
-                if let toolsUsed = message.toolsUsed, !toolsUsed.isEmpty {
-                    HStack(spacing: 4) {
-                        Image(systemName: "wrench.and.screwdriver")
-                            .font(.caption2)
-
-                        Text("Used: \(toolsUsed.joined(separator: ", "))")
-                            .font(.caption2)
-                    }
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 4)
+                if let taskRef = message.taskReference {
+                    TaskReferenceCard(taskReference: taskRef)
+                        .transition(.scale.combined(with: .opacity))
                 }
 
-                Text(message.timestamp, style: .time)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 4)
+                if let toolsUsed = message.toolsUsed, !toolsUsed.isEmpty {
+                    toolsBadge(toolsUsed)
+                }
+
+                timestampView
             }
 
             if message.role == .assistant {
-                Spacer(minLength: 60)
+                Spacer(minLength: 50)
             }
+        }
+    }
+
+    private var aiAvatar: some View {
+        ZStack {
+            Circle()
+                .fill(LinearGradient(
+                    colors: [.blue.opacity(0.6), .purple.opacity(0.6)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ))
+                .frame(width: 32, height: 32)
+
+            Image(systemName: "sparkles")
+                .font(.system(size: 14))
+                .foregroundColor(.white)
+        }
+    }
+
+    @ViewBuilder
+    private var messageContentView: some View {
+        if message.role == .assistant {
+            if let attributedString = try? AttributedString(markdown: message.content) {
+                Text(attributedString)
+                    .font(.body)
+                    .padding(14)
+                    .background(assistantBubbleBackground)
+                    .textSelection(.enabled)
+            } else {
+                Text(message.content)
+                    .font(.body)
+                    .padding(14)
+                    .background(assistantBubbleBackground)
+                    .foregroundColor(.primary)
+            }
+        } else {
+            Text(message.content)
+                .font(.body)
+                .padding(14)
+                .background(userBubbleBackground)
+                .foregroundColor(.white)
+        }
+    }
+
+    private var assistantBubbleBackground: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(colorScheme == .dark ? Color(.systemGray6).opacity(0.6) : Color(.systemGray6))
+    }
+
+    private var userBubbleBackground: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(LinearGradient(
+                colors: [.blue, .purple],
+                startPoint: .leading,
+                endPoint: .trailing
+            ))
+    }
+
+    private func toolsBadge(_ tools: [String]) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "sparkles.rectangle.stack")
+                .font(.caption2)
+
+            Text(tools.map { formatToolName($0) }.joined(separator: " • "))
+                .font(.caption2)
+        }
+        .foregroundColor(.secondary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            Capsule()
+                .fill(Color(.systemGray5).opacity(0.5))
+        )
+    }
+
+    private var timestampView: some View {
+        Text(message.timestamp, style: .time)
+            .font(.caption2)
+            .foregroundColor(.secondary.opacity(0.7))
+            .padding(.horizontal, 4)
+    }
+
+    private func formatToolName(_ tool: String) -> String {
+        switch tool {
+        case "create_task": return "Created task"
+        case "update_task_content": return "Updated task"
+        case "get_tasks": return "Retrieved tasks"
+        case "search_memory": return "Searched memory"
+        case "save_memory": return "Saved memory"
+        case "search_emails": return "Searched emails"
+        default: return tool.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+}
+
+// MARK: - Task Reference Card
+struct TaskReferenceCard: View {
+    let taskReference: ChatMessage.TaskReference
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isPressed = false
+
+    var body: some View {
+        NavigationLink(destination: TaskDetailView(taskId: taskReference.taskId)) {
+            HStack(spacing: 12) {
+                // Icon based on action
+                ZStack {
+                    Circle()
+                        .fill(actionColor.opacity(0.15))
+                        .frame(width: 40, height: 40)
+
+                    Image(systemName: actionIcon)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(actionColor)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(actionText)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+
+                    Text(taskReference.taskTitle)
+                        .font(.body)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
+
+                    HStack(spacing: 4) {
+                        Text("View task")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+
+                        Image(systemName: "arrow.right")
+                            .font(.caption2)
+                            .foregroundColor(.blue)
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary.opacity(0.5))
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(colorScheme == .dark ? Color(.systemGray5).opacity(0.3) : .white)
+                    .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.08), radius: 8, x: 0, y: 2)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(actionColor.opacity(0.2), lineWidth: 1)
+            )
+            .scaleEffect(isPressed ? 0.97 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isPressed)
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in isPressed = true }
+                .onEnded { _ in isPressed = false }
+        )
+    }
+
+    private var actionColor: Color {
+        switch taskReference.action {
+        case "created": return .green
+        case "updated": return .blue
+        case "completed": return .purple
+        default: return .orange
+        }
+    }
+
+    private var actionIcon: String {
+        switch taskReference.action {
+        case "created": return "plus.circle.fill"
+        case "updated": return "doc.text.fill"
+        case "completed": return "checkmark.circle.fill"
+        default: return "pencil.circle.fill"
+        }
+    }
+
+    private var actionText: String {
+        switch taskReference.action {
+        case "created": return "CREATED TASK"
+        case "updated": return "UPDATED TASK"
+        case "completed": return "COMPLETED TASK"
+        default: return "TASK ACTION"
         }
     }
 }

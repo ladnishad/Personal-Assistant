@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_serializer
 
 
 class UserRegister(BaseModel):
@@ -25,7 +25,7 @@ class UserLogin(BaseModel):
 class UserResponse(BaseModel):
     """User response model."""
 
-    id: str = Field(..., alias="_id")
+    id: str = Field(..., serialization_alias="_id")
     email: EmailStr
     full_name: Optional[str] = None
     is_active: bool
@@ -33,9 +33,14 @@ class UserResponse(BaseModel):
     timezone: str
     created_at: datetime
 
-    class Config:
-        populate_by_name = True
-        json_schema_extra = {
+    @field_serializer('created_at')
+    def serialize_datetime(self, dt: datetime, _info):
+        """Serialize datetime to ISO8601 format without microseconds."""
+        return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    model_config = {
+        "populate_by_name": True,
+        "json_schema_extra": {
             "example": {
                 "_id": "507f1f77bcf86cd799439011",
                 "email": "user@example.com",
@@ -43,9 +48,10 @@ class UserResponse(BaseModel):
                 "is_active": True,
                 "is_verified": False,
                 "timezone": "America/New_York",
-                "created_at": "2024-01-01T00:00:00",
+                "created_at": "2024-01-01T00:00:00Z",
             }
         }
+    }
 
 
 class TokenResponse(BaseModel):
@@ -55,6 +61,10 @@ class TokenResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int  # seconds
+
+    model_config = {
+        "populate_by_name": True
+    }
 
 
 class TokenRefresh(BaseModel):

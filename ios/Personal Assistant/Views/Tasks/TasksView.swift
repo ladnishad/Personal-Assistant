@@ -13,9 +13,15 @@ struct TasksView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
+            VStack(spacing: 0) {
+                filterPicker
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 12)
+
                 if viewModel.isLoading && viewModel.tasks.isEmpty {
                     ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if viewModel.tasks.isEmpty {
                     emptyStateView
                 } else {
@@ -23,7 +29,7 @@ struct TasksView: View {
                 }
             }
             .navigationTitle("Tasks")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
@@ -32,12 +38,6 @@ struct TasksView: View {
                         Image(systemName: "plus")
                     }
                 }
-            }
-            .safeAreaInset(edge: .top) {
-                filterPicker
-                    .padding(.horizontal)
-                    .padding(.top, 8)
-                    .background(.ultraThinMaterial)
             }
             .sheet(isPresented: $showingNewTask) {
                 NewTaskView(viewModel: viewModel)
@@ -66,7 +66,14 @@ struct TasksView: View {
     private var taskList: some View {
         List {
             ForEach(viewModel.tasks) { task in
-                TaskRowView(task: task, viewModel: viewModel)
+                ZStack {
+                    NavigationLink(destination: TaskDetailView(taskId: task.id)) {
+                        EmptyView()
+                    }
+                    .opacity(0)
+
+                    TaskRowView(task: task, viewModel: viewModel)
+                }
             }
         }
         .listStyle(.plain)

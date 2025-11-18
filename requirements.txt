@@ -1,56 +1,59 @@
 # Core Framework
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-python-multipart==0.0.6
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.6
 
 # Database
-motor==3.3.2
-pymongo==4.6.1
-beanie==1.24.0
+motor>=3.6.0
+pymongo>=4.10.0
+beanie>=1.27.0
 
 # Authentication
-pyjwt==2.8.0
+pyjwt>=2.9.0
 passlib[bcrypt]==1.7.4
+bcrypt==3.2.2  # Pin to version compatible with passlib 1.7.4
 python-jose[cryptography]==3.3.0
 
 # OAuth & Integrations
-google-auth==2.27.0
-google-auth-oauthlib==1.2.0
-google-auth-httplib2==0.2.0
-google-api-python-client==2.116.0
-msal==1.26.0
+google-auth>=2.27.0
+google-auth-oauthlib>=1.2.0
+google-auth-httplib2>=0.2.0
+google-api-python-client>=2.116.0
+msal>=1.26.0
 
 # Email Processing
-email-validator==2.1.0.post1
+email-validator>=2.1.0
 
 # Task Scheduling
-apscheduler==3.10.4
+apscheduler>=3.10.4
 
 # Caching (Optional)
-redis==5.0.1
+redis>=5.0.1
 
 # LLM & Embeddings
-openai==1.10.0
-tiktoken==0.5.2
+openai>=2.7.1
+openai-agents>=0.5.1
+tiktoken>=0.5.2
 
 # HTTP Client
-httpx==0.26.0
-requests==2.31.0
+httpx>=0.27.0
+requests>=2.31.0
 
 # Data Validation
-pydantic==2.5.3
-pydantic-settings==2.1.0
+pydantic>=2.12.3
+pydantic-settings>=2.6.0
 
 # Date/Time
-python-dateutil==2.8.2
-pytz==2024.1
+python-dateutil>=2.8.2
+pytz>=2024.1
 
 # Environment
-python-dotenv==1.0.1
+python-dotenv>=1.0.1
 
 # Utilities
-tenacity==8.2.3
-aiofiles==23.2.1
+tenacity>=8.2.3
+aiofiles>=23.2.1
+numpy>=1.26.3  # For cosine similarity in memory search fallback
 
 # Development
 ruff==0.1.14

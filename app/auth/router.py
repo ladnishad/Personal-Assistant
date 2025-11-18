@@ -22,7 +22,7 @@ async def register(user_data: UserRegister):
     """Register a new user."""
     user = await AuthService.register_user(user_data)
     return UserResponse(
-        _id=str(user.id),
+        id=str(user.id),
         email=user.email,
         full_name=user.full_name,
         is_active=user.is_active,
@@ -50,7 +50,7 @@ async def refresh_token(token_data: TokenRefresh):
 async def get_current_user_info(current_user: User = Depends(get_current_active_user)):
     """Get current user information."""
     return UserResponse(
-        _id=str(current_user.id),
+        id=str(current_user.id),
         email=current_user.email,
         full_name=current_user.full_name,
         is_active=current_user.is_active,

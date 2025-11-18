@@ -2,8 +2,9 @@
 
 import logging
 import secrets
-from typing import List
+from typing import List, Optional
 
+from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.auth.dependencies import get_current_active_user
@@ -11,6 +12,7 @@ from app.auth.models import User
 from app.integrations.google_service import GoogleService
 from app.integrations.microsoft_service import MicrosoftService
 from app.integrations.models import Integration, IntegrationType
+from app.integrations.oauth_state import OAuthStateStorage
 from app.integrations.schemas import (
     IntegrationConnectRequest,
     IntegrationConnectResponse,
@@ -31,8 +33,13 @@ async def connect_google(
     # Generate state for CSRF protection
     state = secrets.token_urlsafe(32)
 
-    # Store state in session or cache (simplified for MVP)
-    # In production, store this in Redis with expiration
+    # Store state with user ID and scopes for callback
+    OAuthStateStorage.store(
+        state=state,
+        user_id=str(current_user.id),
+        scopes=request.scopes,
+        ttl_minutes=10,
+    )
 
     # Get authorization URL
     auth_url = GoogleService.get_authorization_url(state, request.scopes)
@@ -44,16 +51,46 @@ async def connect_google(
 async def google_callback(
     code: str = Query(...),
     state: str = Query(...),
-    current_user: User = Depends(get_current_active_user),
 ):
     """Handle Google OAuth callback."""
     try:
-        # Exchange code for tokens
-        token_data = await GoogleService.exchange_code_for_tokens(code)
+        # Retrieve state data from storage
+        state_data = OAuthStateStorage.get(state)
+
+        if not state_data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired OAuth state. Please try connecting again.",
+            )
+
+        # Get user ID and scopes from stored state
+        user_id = PydanticObjectId(state_data["user_id"])
+        scopes = state_data["scopes"]
+
+        # Map scope names to actual Google scopes for token exchange
+        scope_mapping = {
+            "email": GoogleService.GMAIL_SCOPES,
+            "gmail": GoogleService.GMAIL_SCOPES,
+            "calendar": GoogleService.CALENDAR_SCOPES,
+        }
+
+        # Build full scopes list
+        full_scopes = []
+        for scope in scopes:
+            if scope.lower() in scope_mapping:
+                full_scopes.extend(scope_mapping[scope.lower()])
+            else:
+                full_scopes.append(scope)
+
+        # Remove duplicates
+        full_scopes = list(set(full_scopes))
+
+        # Exchange code for tokens with the correct scopes
+        token_data = await GoogleService.exchange_code_for_tokens(code, full_scopes)
 
         # Check if integration already exists
         existing = await Integration.find_one(
-            Integration.user_id == current_user.id,
+            Integration.user_id == user_id,
             Integration.integration_type == IntegrationType.GOOGLE,
         )
 
@@ -71,7 +108,7 @@ async def google_callback(
         else:
             # Create new integration
             integration = Integration(
-                user_id=current_user.id,
+                user_id=user_id,
                 integration_type=IntegrationType.GOOGLE,
                 access_token=token_data["access_token"],
                 refresh_token=token_data["refresh_token"],
@@ -82,10 +119,20 @@ async def google_callback(
             )
             await integration.insert()
 
-        logger.info(f"Google integration connected for user {current_user.email}")
+        # Clean up state from storage
+        OAuthStateStorage.delete(state)
 
-        return {"message": "Google account connected successfully", "integration_id": str(integration.id)}
+        logger.info(f"Google integration connected for user {user_id}")
 
+        # Return success message with redirect to frontend
+        return {
+            "message": "Google account connected successfully!",
+            "integration_id": str(integration.id),
+            "email": token_data["email"],
+        }
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in Google OAuth callback: {e}")
         raise HTTPException(
@@ -103,6 +150,14 @@ async def connect_microsoft(
     # Generate state for CSRF protection
     state = secrets.token_urlsafe(32)
 
+    # Store state with user ID and scopes for callback
+    OAuthStateStorage.store(
+        state=state,
+        user_id=str(current_user.id),
+        scopes=request.scopes,
+        ttl_minutes=10,
+    )
+
     # Get authorization URL
     auth_url = MicrosoftService.get_authorization_url(state, request.scopes)
 
@@ -113,16 +168,46 @@ async def connect_microsoft(
 async def microsoft_callback(
     code: str = Query(...),
     state: str = Query(...),
-    current_user: User = Depends(get_current_active_user),
 ):
     """Handle Microsoft OAuth callback."""
     try:
-        # Exchange code for tokens
-        token_data = await MicrosoftService.exchange_code_for_tokens(code)
+        # Retrieve state data from storage
+        state_data = OAuthStateStorage.get(state)
+
+        if not state_data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired OAuth state. Please try connecting again.",
+            )
+
+        # Get user ID and scopes from stored state
+        user_id = PydanticObjectId(state_data["user_id"])
+        scopes = state_data["scopes"]
+
+        # Map scope names to actual Microsoft scopes for token exchange
+        scope_mapping = {
+            "email": MicrosoftService.OUTLOOK_SCOPES,
+            "outlook": MicrosoftService.OUTLOOK_SCOPES,
+            "calendar": MicrosoftService.CALENDAR_SCOPES,
+        }
+
+        # Build full scopes list (always include USER_SCOPES)
+        full_scopes = MicrosoftService.USER_SCOPES.copy()
+        for scope in scopes:
+            if scope.lower() in scope_mapping:
+                full_scopes.extend(scope_mapping[scope.lower()])
+            else:
+                full_scopes.append(scope)
+
+        # Remove duplicates
+        full_scopes = list(set(full_scopes))
+
+        # Exchange code for tokens with the correct scopes
+        token_data = await MicrosoftService.exchange_code_for_tokens(code, full_scopes)
 
         # Check if integration already exists
         existing = await Integration.find_one(
-            Integration.user_id == current_user.id,
+            Integration.user_id == user_id,
             Integration.integration_type == IntegrationType.MICROSOFT,
         )
 
@@ -140,7 +225,7 @@ async def microsoft_callback(
         else:
             # Create new integration
             integration = Integration(
-                user_id=current_user.id,
+                user_id=user_id,
                 integration_type=IntegrationType.MICROSOFT,
                 access_token=token_data["access_token"],
                 refresh_token=token_data["refresh_token"],
@@ -151,10 +236,20 @@ async def microsoft_callback(
             )
             await integration.insert()
 
-        logger.info(f"Microsoft integration connected for user {current_user.email}")
+        # Clean up state from storage
+        OAuthStateStorage.delete(state)
 
-        return {"message": "Microsoft account connected successfully", "integration_id": str(integration.id)}
+        logger.info(f"Microsoft integration connected for user {user_id}")
 
+        # Return success message
+        return {
+            "message": "Microsoft account connected successfully!",
+            "integration_id": str(integration.id),
+            "email": token_data["email"],
+        }
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in Microsoft OAuth callback: {e}")
         raise HTTPException(

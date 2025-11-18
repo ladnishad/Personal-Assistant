@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import SwiftUI
 
 @MainActor
 class AuthViewModel: ObservableObject {
@@ -18,18 +19,26 @@ class AuthViewModel: ObservableObject {
     private let apiService = APIService.shared
 
     init() {
-        checkAuthStatus()
+        // Don't run async tasks in init - let the view trigger it
     }
 
     func checkAuthStatus() {
         // Check if we have a valid token
-        if UserDefaults.standard.string(forKey: "accessToken") != nil {
-            Task {
-                do {
-                    currentUser = try await apiService.getCurrentUser()
+        guard UserDefaults.standard.string(forKey: "accessToken") != nil else {
+            isAuthenticated = false
+            return
+        }
+
+        Task {
+            do {
+                let user = try await apiService.getCurrentUser()
+                withAnimation {
+                    currentUser = user
                     isAuthenticated = true
-                } catch {
-                    // Token might be expired
+                }
+            } catch {
+                // Token might be expired
+                withAnimation {
                     isAuthenticated = false
                 }
             }
@@ -41,13 +50,31 @@ class AuthViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            _ = try await apiService.login(email: email, password: password)
-            currentUser = try await apiService.getCurrentUser()
-            isAuthenticated = true
+            print("🔐 Attempting login...")
+            let tokenResponse = try await apiService.login(email: email, password: password)
+            print("✅ Login successful, got tokens")
+            print("🔍 Fetching current user...")
+            let user = try await apiService.getCurrentUser()
+            print("✅ Got current user: \(user.email)")
+
+            // Update state with animation to ensure SwiftUI picks up the change
+            withAnimation {
+                currentUser = user
+                isAuthenticated = true
+            }
+            print("✅ Authentication state updated to: \(isAuthenticated)")
         } catch let error as APIError {
+            print("❌ API Error during login: \(error.errorDescription ?? "unknown")")
             errorMessage = error.errorDescription
+            withAnimation {
+                isAuthenticated = false
+            }
         } catch {
-            errorMessage = "An unexpected error occurred"
+            print("❌ Unexpected error during login: \(error)")
+            errorMessage = "An unexpected error occurred: \(error.localizedDescription)"
+            withAnimation {
+                isAuthenticated = false
+            }
         }
 
         isLoading = false
@@ -72,7 +99,10 @@ class AuthViewModel: ObservableObject {
 
     func logout() {
         apiService.logout()
-        isAuthenticated = false
-        currentUser = nil
+        withAnimation {
+            isAuthenticated = false
+            currentUser = nil
+        }
+        print("✅ Logged out, authentication state: \(isAuthenticated)")
     }
 }

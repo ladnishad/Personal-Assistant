@@ -22,12 +22,16 @@ class TaskViewModel: ObservableObject {
         errorMessage = nil
 
         do {
+            print("📋 Loading tasks with status: \(selectedStatus?.rawValue ?? "all")")
             let response = try await apiService.getTasks(status: selectedStatus)
+            print("✅ Loaded \(response.tasks.count) tasks")
             tasks = response.tasks
         } catch let error as APIError {
+            print("❌ Task loading error: \(error.errorDescription ?? "unknown")")
             errorMessage = error.errorDescription
         } catch {
-            errorMessage = "Failed to load tasks"
+            print("❌ Unexpected error loading tasks: \(error)")
+            errorMessage = "Failed to load tasks: \(error.localizedDescription)"
         }
 
         isLoading = false

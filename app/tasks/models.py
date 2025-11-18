@@ -53,6 +53,9 @@ class Task(Document):
     reminder_at: Optional[datetime] = None
     reminder_sent: bool = Field(default=False)
 
+    # Rich content
+    content: Optional[str] = None  # Markdown/rich text content for task details
+
     # Metadata
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
