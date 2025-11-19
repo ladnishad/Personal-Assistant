@@ -308,19 +308,25 @@ class PackageService:
 
     @staticmethod
     async def get_package_by_tracking(
-        tracking_number: str, courier_service: CourierService
+        tracking_number: str, courier_service: Optional[CourierService] = None
     ) -> Optional[Package]:
-        """Get package by tracking number and courier.
+        """Get package by tracking number and optionally courier.
 
         Args:
             tracking_number: Tracking number
-            courier_service: Courier service
+            courier_service: Optional courier service. If not provided, searches by tracking number only.
 
         Returns:
             Package if found, None otherwise
         """
-        package = await Package.find_one(
-            Package.tracking_number == tracking_number,
-            Package.courier_service == courier_service,
-        )
+        if courier_service:
+            package = await Package.find_one(
+                Package.tracking_number == tracking_number,
+                Package.courier_service == courier_service,
+            )
+        else:
+            # Search by tracking number only
+            package = await Package.find_one(
+                Package.tracking_number == tracking_number,
+            )
         return package

@@ -11,6 +11,10 @@ struct EmailInboxView: View {
     @StateObject private var viewModel = EmailViewModel()
     @State private var showingSearchBar = false
     @State private var selectedEmail: Email?
+    @State private var showingClassifyAlert = false
+    @State private var showingClassifyResults = false
+    @State private var singleClassifyResult: EmailClassifyResponse?
+    @State private var showingSingleClassifyResult = false
 
     var body: some View {
         NavigationStack {
@@ -40,6 +44,19 @@ struct EmailInboxView: View {
                             Image(systemName: viewModel.showUnreadOnly ? "envelope.badge.fill" : "envelope.badge")
                                 .foregroundColor(viewModel.showUnreadOnly ? .blue : .primary)
                         }
+
+                        // 🧪 EXPERIMENTAL: Classify all emails button
+                        Button(action: {
+                            showingClassifyAlert = true
+                        }) {
+                            if viewModel.isClassifying {
+                                ProgressView()
+                            } else {
+                                Image(systemName: "brain")
+                                    .foregroundColor(.purple)
+                            }
+                        }
+                        .disabled(viewModel.isClassifying)
 
                         Button(action: {
                             Task {
@@ -71,7 +88,63 @@ struct EmailInboxView: View {
             .sheet(item: $selectedEmail) { email in
                 EmailDetailView(email: email)
             }
+            .alert("🧪 Classify All Emails", isPresented: $showingClassifyAlert) {
+                Button("Cancel", role: .cancel) {}
+                Button("Classify Unclassified") {
+                    Task {
+                        await viewModel.classifyAllEmails(forceReclassify: false)
+                        showingClassifyResults = true
+                    }
+                }
+                Button("Re-classify All", role: .destructive) {
+                    Task {
+                        await viewModel.classifyAllEmails(forceReclassify: true)
+                        showingClassifyResults = true
+                    }
+                }
+            } message: {
+                Text("This experimental feature uses AI to categorize your emails. Choose whether to classify only new emails or re-classify all emails.")
+            }
+            .alert("Classification Complete", isPresented: $showingClassifyResults) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                if let result = viewModel.classificationResult {
+                    Text("""
+                    ✅ Classified: \(result.classifiedCount)
+                    ⏭️ Skipped: \(result.skippedCount)
+                    ❌ Errors: \(result.errorCount)
+                    ⏱️ Duration: \(String(format: "%.1f", result.durationSeconds))s
+
+                    Categories:
+                    \(categoryBreakdown(result.categories))
+                    """)
+                } else {
+                    Text("No results available")
+                }
+            }
+            .alert("Email Classified", isPresented: $showingSingleClassifyResult) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                if let result = singleClassifyResult {
+                    Text("""
+                    📧 Category: \(result.category)
+                    📊 Confidence: \(String(format: "%.0f", result.confidence * 100))%
+
+                    💭 Reasoning:
+                    \(result.reasoning)
+                    """)
+                } else {
+                    Text("No classification result available")
+                }
+            }
         }
+    }
+
+    private func categoryBreakdown(_ categories: [String: Int]) -> String {
+        categories
+            .sorted { $0.value > $1.value }
+            .map { "• \($0.key): \($0.value)" }
+            .joined(separator: "\n")
     }
 
     private var emailList: some View {
@@ -83,6 +156,39 @@ struct EmailInboxView: View {
                         selectedEmail = email
                         Task {
                             await viewModel.markAsRead(email)
+                        }
+                    }
+                    .contextMenu {
+                        Button {
+                            Task {
+                                if let result = await viewModel.classifySingleEmail(email, forceReclassify: false) {
+                                    singleClassifyResult = result
+                                    showingSingleClassifyResult = true
+                                }
+                            }
+                        } label: {
+                            Label("🧪 Classify Email", systemImage: "brain")
+                        }
+
+                        Button {
+                            Task {
+                                if let result = await viewModel.classifySingleEmail(email, forceReclassify: true) {
+                                    singleClassifyResult = result
+                                    showingSingleClassifyResult = true
+                                }
+                            }
+                        } label: {
+                            Label("🔄 Re-classify Email", systemImage: "arrow.clockwise")
+                        }
+
+                        Divider()
+
+                        Button {
+                            Task {
+                                await viewModel.markAsRead(email)
+                            }
+                        } label: {
+                            Label(email.isRead ? "Mark as Unread" : "Mark as Read", systemImage: email.isRead ? "envelope.badge" : "envelope.open")
                         }
                     }
             }

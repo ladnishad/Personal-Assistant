@@ -74,12 +74,21 @@ class Email(Document):
     received_at: datetime
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+    # Email classification (LLM-based)
+    email_category: Optional[str] = None  # EmailCategory value
+    category_confidence: Optional[float] = None
+    category_reasoning: Optional[str] = None
+    classified_at: Optional[datetime] = None
+
     # Entity extraction results (structured)
     extracted_entities: Optional[Dict] = None  # EmailEntity as dict
     entities_extracted_at: Optional[datetime] = None
 
     # Email relationships
     related_email_ids: List[PydanticObjectId] = Field(default_factory=list)
+    # TODO: Reserved for future use - will store relationship type for each related email
+    # Format: {email_id: "same_order", email_id: "same_tracking", ...}
+    # Currently relationship types are stored in EmailRelationship collection
     relationship_types: Dict[str, str] = Field(
         default_factory=dict
     )  # {email_id: "same_order", ...}
@@ -93,6 +102,8 @@ class Email(Document):
         indexes = [
             [("user_id", 1), ("received_at", -1)],
             [("user_id", 1), ("is_read", 1)],
+            [("email_category", 1), ("received_at", -1)],  # Query by category
+            [("classified_at", 1)],  # Find unclassified emails
             IndexModel([("message_id", 1)], name="email_message_id_unique_idx", unique=True),
         ]
 

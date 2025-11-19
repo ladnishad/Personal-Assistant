@@ -68,6 +68,8 @@ class ThreadAwarePackageBuilder:
                 merchant_emails.append(email)
 
             # Check if sent by user
+            # TODO: Improve user email detection by matching against user's actual email address
+            # Current implementation relies on email labels which may not always be present
             if email.from_email and user_id:
                 # User's sent emails (from their email address)
                 # Note: This is simplified - in production, match against user's email
@@ -92,7 +94,7 @@ class ThreadAwarePackageBuilder:
         tracking_number = courier_entities.tracking_numbers[0]
 
         # Detect courier service
-        courier_service = CourierDetector.detect_courier_from_tracking(tracking_number)
+        courier_service = CourierDetector.detect_courier_from_tracking_number(tracking_number)
 
         # Fallback: try email domain
         if courier_service == CourierService.UNKNOWN:
@@ -239,6 +241,7 @@ class ThreadAwarePackageBuilder:
                 merchant_emails.append(email)
 
             # Check if user email
+            # TODO: Improve user email detection by matching against user's actual email address
             if any(
                 label in ["sent", "SENT"] for label in getattr(email, "labels", [])
             ):
@@ -265,14 +268,9 @@ class ThreadAwarePackageBuilder:
         # Update related emails
         package.related_email_ids = [email.id for email in email_cluster]
 
-        # Update metadata
-        if "total_related_emails" in package.email_metadata:
-            package.email_metadata["total_related_emails"] = len(email_cluster)
-        else:
-            package.email_metadata = {
-                "total_related_emails": len(email_cluster),
-                "merchant_email_ids": [str(e.id) for e in merchant_emails],
-            }
+        # Update metadata - always update both total count and merchant email list
+        package.email_metadata["total_related_emails"] = len(email_cluster)
+        package.email_metadata["merchant_email_ids"] = [str(e.id) for e in merchant_emails]
 
         # Check for refund status update
         for email in email_cluster:

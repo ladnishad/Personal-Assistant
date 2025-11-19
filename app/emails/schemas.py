@@ -75,3 +75,25 @@ class EmailSyncResponse(BaseModel):
     new_emails: int
     updated_emails: int
     last_sync: datetime
+
+
+class EmailClassifyAllResponse(BaseModel):
+    """Email classification response."""
+
+    total_emails: int
+    classified_count: int
+    skipped_count: int
+    error_count: int
+    categories: dict  # Category name -> count
+    duration_seconds: float
+
+
+class EmailClassifyResponse(BaseModel):
+    """Single email classification response."""
+
+    email_id: str
+    category: str
+    confidence: float
+    reasoning: str
+    indicators: list[str] = Field(default_factory=list)
+    classified_at: datetime

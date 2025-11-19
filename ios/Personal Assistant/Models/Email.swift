@@ -24,7 +24,7 @@ struct Email: Codable, Identifiable {
     let isRead: Bool
     let isStarred: Bool
     let receivedAt: Date
-    let extractedEntities: [String: String]
+    let extractedEntities: [String: AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -41,7 +41,9 @@ struct Email: Codable, Identifiable {
         case receivedAt = "received_at"
         case extractedEntities = "extracted_entities"
     }
+}
 
+extension Email {
     struct Attachment: Codable {
         let filename: String
         let mimeType: String
@@ -70,5 +72,41 @@ struct EmailListResponse: Codable {
     enum CodingKeys: String, CodingKey {
         case emails, total, page
         case pageSize = "page_size"
+    }
+}
+
+struct EmailClassifyAllResponse: Codable {
+    let totalEmails: Int
+    let classifiedCount: Int
+    let skippedCount: Int
+    let errorCount: Int
+    let categories: [String: Int]
+    let durationSeconds: Double
+
+    enum CodingKeys: String, CodingKey {
+        case totalEmails = "total_emails"
+        case classifiedCount = "classified_count"
+        case skippedCount = "skipped_count"
+        case errorCount = "error_count"
+        case categories
+        case durationSeconds = "duration_seconds"
+    }
+}
+
+struct EmailClassifyResponse: Codable {
+    let emailId: String
+    let category: String
+    let confidence: Double
+    let reasoning: String
+    let indicators: [String]
+    let classifiedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case emailId = "email_id"
+        case category
+        case confidence
+        case reasoning
+        case indicators
+        case classifiedAt = "classified_at"
     }
 }

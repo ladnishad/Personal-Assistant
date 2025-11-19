@@ -94,6 +94,7 @@ class EmailRelationshipDetector:
             entities = EmailEntityExtractor.extract_entities(email)
             # Convert to dict for storage
             email.extracted_entities = entities.model_dump()
+            email.entities_extracted_at = datetime.utcnow()
             await email.save()
 
         # Load entities as EmailEntity object
@@ -112,6 +113,7 @@ class EmailRelationshipDetector:
             if not candidate.extracted_entities:
                 c_entities = EmailEntityExtractor.extract_entities(candidate)
                 candidate.extracted_entities = c_entities.model_dump()
+                candidate.entities_extracted_at = datetime.utcnow()
                 await candidate.save()
 
             # Load candidate entities
@@ -178,7 +180,7 @@ class EmailRelationshipDetector:
             days_apart = abs((email1.received_at - email2.received_at).days)
             if days_apart <= 7:
                 relationship_types.append(RelationshipType.SAME_MERCHANT)
-                shared_entities["merchant"] = entities1.merchant_domain
+                shared_entities["merchant"] = [entities1.merchant_domain]
                 confidence = max(confidence, 0.60)
 
         # 5. Temporal proximity + semantic similarity

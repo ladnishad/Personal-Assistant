@@ -13,6 +13,8 @@ class EmailViewModel: ObservableObject {
     @Published var emails: [Email] = []
     @Published var isLoading = false
     @Published var isSyncing = false
+    @Published var isClassifying = false
+    @Published var classificationResult: EmailClassifyAllResponse?
     @Published var errorMessage: String?
     @Published var searchText = ""
     @Published var showUnreadOnly = false
@@ -76,5 +78,42 @@ class EmailViewModel: ObservableObject {
         Task {
             await loadEmails()
         }
+    }
+
+    func classifyAllEmails(forceReclassify: Bool = false) async {
+        isClassifying = true
+        classificationResult = nil
+        errorMessage = nil
+
+        do {
+            let result = try await apiService.classifyAllEmails(forceReclassify: forceReclassify)
+            classificationResult = result
+
+            // Reload emails to show updated classifications
+            await loadEmails()
+        } catch let error as APIError {
+            errorMessage = error.errorDescription
+        } catch {
+            errorMessage = "Failed to classify emails"
+        }
+
+        isClassifying = false
+    }
+
+    func classifySingleEmail(_ email: Email, forceReclassify: Bool = false) async -> EmailClassifyResponse? {
+        do {
+            let result = try await apiService.classifySingleEmail(id: email.id, forceReclassify: forceReclassify)
+
+            // Reload emails to show updated classification
+            await loadEmails()
+
+            return result
+        } catch let error as APIError {
+            errorMessage = error.errorDescription
+        } catch {
+            errorMessage = "Failed to classify email"
+        }
+
+        return nil
     }
 }

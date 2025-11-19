@@ -141,7 +141,7 @@ class EmailEntityExtractor:
         patterns = {
             "ups": r"\b1Z[A-Z0-9]{16}\b",
             "fedex": r"\b\d{12,14}\b(?![A-Z])",  # 12-14 digits not followed by letter
-            "usps": r"\b(94|93|92|94|95)\d{20}\b",
+            "usps": r"\b(94|93|92|95)\d{20}\b",
             "amazon": r"\bTBA\d{12}\b",
             "dhl": r"\b\d{10,11}\b",
             "ontrac": r"\bC\d{14}\b",

@@ -3,6 +3,7 @@
 import logging
 from datetime import datetime, timedelta
 
+from app.emails.classifier import EmailCategory, classify_email
 from app.emails.entity_extractor import EmailEntityExtractor
 from app.emails.models import Email
 from app.emails.relationships import EmailRelationship, EmailRelationshipDetector
@@ -300,27 +301,56 @@ async def process_email_relationships_job():
     """Background job to analyze emails and build relationship graph.
 
     This job:
-    1. Extracts entities from new emails (tracking numbers, order numbers, etc.)
+    0. Classifies emails using LLM (NEW)
+    1. Extracts entities from relevant emails (tracking numbers, order numbers, etc.)
     2. Detects relationships between emails
     3. Builds email relationship graph for thread-aware package creation
     """
     logger.info("Starting email relationship processing job")
 
     try:
-        # Get emails without entity extraction (within last 24 hours)
+        # Get unclassified emails (within last 24 hours)
         cutoff_time = datetime.utcnow() - timedelta(hours=24)
         emails = await Email.find(
-            Email.entities_extracted_at == None, Email.created_at >= cutoff_time
+            Email.classified_at == None, Email.created_at >= cutoff_time
         ).to_list()
 
-        logger.info(f"Found {len(emails)} emails to process")
+        logger.info(f"Found {len(emails)} emails to classify and process")
 
+        emails_classified = 0
+        emails_skipped = 0
         entities_extracted = 0
         relationships_created = 0
 
         for email in emails:
             try:
-                # 1. Extract entities
+                # STEP 1: Classify email with LLM (ALWAYS)
+                logger.debug(f"Classifying email {email.id}: {email.subject[:50]}...")
+
+                classification = await classify_email(email)
+
+                # Save classification
+                email.email_category = classification.category.value
+                email.category_confidence = classification.confidence
+                email.category_reasoning = classification.reasoning
+                email.classified_at = datetime.utcnow()
+                await email.save()
+                emails_classified += 1
+
+                logger.info(
+                    f"Classified as {classification.category.value} "
+                    f"(confidence: {classification.confidence:.2f})"
+                )
+
+                # STEP 2: Conditional deep processing based on category
+                if not classification.should_process:
+                    logger.debug(
+                        f"Skipping entity extraction for {classification.category.value} email"
+                    )
+                    emails_skipped += 1
+                    continue
+
+                # STEP 3: Extract entities (only for relevant categories)
                 email.extracted_entities = EmailEntityExtractor.extract_entities(
                     email
                 ).model_dump()
@@ -330,37 +360,59 @@ async def process_email_relationships_job():
 
                 logger.debug(f"Extracted entities from email {email.id}")
 
-                # 2. Find related emails
-                relationships = await EmailRelationshipDetector.find_related_emails(
-                    email, email.user_id, lookback_days=30
-                )
-
-                # 3. Save relationships
-                for rel in relationships:
-                    # Check if relationship already exists
-                    existing = await EmailRelationship.find_one(
-                        EmailRelationship.email_1_id == rel.email_1_id,
-                        EmailRelationship.email_2_id == rel.email_2_id,
+                # STEP 4: Find related emails (only for categories that need relationships)
+                relationships = []
+                if classification.category in [
+                    EmailCategory.PACKAGE_SHIPPING,
+                    EmailCategory.ECOMMERCE_ORDER,
+                    EmailCategory.TRAVEL,
+                ]:
+                    relationships = await EmailRelationshipDetector.find_related_emails(
+                        email, email.user_id, lookback_days=30
                     )
-                    if not existing:
-                        await rel.insert()
-                        relationships_created += 1
 
-                        logger.debug(
-                            f"Created relationship: {rel.relationship_type.value} (confidence: {rel.confidence})"
+                    # 5. Save relationships
+                    for rel in relationships:
+                        # Check if relationship already exists (both directions to avoid duplicates)
+                        existing = await EmailRelationship.find_one(
+                            {
+                                "$or": [
+                                    {
+                                        "email_1_id": rel.email_1_id,
+                                        "email_2_id": rel.email_2_id,
+                                    },
+                                    {
+                                        "email_1_id": rel.email_2_id,
+                                        "email_2_id": rel.email_1_id,
+                                    },
+                                ]
+                            }
                         )
+                        if not existing:
+                            await rel.insert()
+                            relationships_created += 1
 
-                # 4. Update email's related_email_ids
-                email.related_email_ids = [rel.email_2_id for rel in relationships]
-                await email.save()
+                            logger.debug(
+                                f"Created relationship: {rel.relationship_type.value} (confidence: {rel.confidence})"
+                            )
+
+                    # 6. Update email's related_email_ids (if any relationships found)
+                    if relationships:
+                        # Handle both directions: current email can be email_1 or email_2
+                        email.related_email_ids = [
+                            rel.email_2_id if rel.email_1_id == email.id else rel.email_1_id
+                            for rel in relationships
+                        ]
+                        await email.save()
 
             except Exception as e:
                 logger.error(f"Error processing email {email.id}: {e}", exc_info=True)
                 continue
 
         logger.info(
-            f"Email relationship processing completed. "
-            f"Entities extracted: {entities_extracted}, Relationships created: {relationships_created}"
+            f"Email processing completed. "
+            f"Classified: {emails_classified}, Skipped: {emails_skipped}, "
+            f"Entities extracted: {entities_extracted}, Relationships: {relationships_created}"
         )
 
     except Exception as e:
@@ -378,8 +430,13 @@ async def build_packages_from_threads_job():
     logger.info("Starting thread-aware package building job")
 
     try:
-        # Get emails with tracking numbers
-        all_emails = await Email.find(Email.entities_extracted_at != None).to_list()
+        # Get emails with tracking numbers (limit to last 30 days for performance)
+        cutoff_time = datetime.utcnow() - timedelta(days=30)
+        all_emails = await Email.find(
+            Email.entities_extracted_at != None, Email.received_at >= cutoff_time
+        ).to_list()
+
+        logger.info(f"Processing {len(all_emails)} emails from last 30 days")
 
         packages_created = 0
         packages_enriched = 0

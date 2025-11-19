@@ -216,6 +216,49 @@ class APIService {
         let _: Empty = try await request(endpoint: "/emails/\(id)/read?is_read=\(isRead)", method: "PATCH", requiresAuth: true)
     }
 
+    func classifyAllEmails(forceReclassify: Bool = false) async throws -> EmailClassifyAllResponse {
+        struct ClassifyResponse: Codable {
+            let totalEmails: Int
+            let classifiedCount: Int
+            let skippedCount: Int
+            let errorCount: Int
+            let categories: [String: Int]
+            let durationSeconds: Double
+
+            enum CodingKeys: String, CodingKey {
+                case totalEmails = "total_emails"
+                case classifiedCount = "classified_count"
+                case skippedCount = "skipped_count"
+                case errorCount = "error_count"
+                case categories
+                case durationSeconds = "duration_seconds"
+            }
+        }
+
+        let response: ClassifyResponse = try await request(
+            endpoint: "/emails/classify-all?force_reclassify=\(forceReclassify)",
+            method: "POST",
+            requiresAuth: true
+        )
+
+        return EmailClassifyAllResponse(
+            totalEmails: response.totalEmails,
+            classifiedCount: response.classifiedCount,
+            skippedCount: response.skippedCount,
+            errorCount: response.errorCount,
+            categories: response.categories,
+            durationSeconds: response.durationSeconds
+        )
+    }
+
+    func classifySingleEmail(id: String, forceReclassify: Bool = false) async throws -> EmailClassifyResponse {
+        return try await request(
+            endpoint: "/emails/\(id)/classify?force_reclassify=\(forceReclassify)",
+            method: "POST",
+            requiresAuth: true
+        )
+    }
+
     // MARK: - Tasks
 
     func getTasks(status: TaskStatus? = nil, page: Int = 1, pageSize: Int = 50) async throws -> TaskListResponse {
