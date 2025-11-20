@@ -2,6 +2,7 @@
 
 from agents import Agent
 
+from app.agent.email_tools import scan_emails_for_packages, search_emails
 from app.agent.package_tools import PACKAGE_TOOLS
 
 
@@ -40,9 +41,8 @@ When user asks about packages, use context-aware tools:
 **Examples:**
 
 User: "Can you check my emails for any packages?"
-→ Call `search_emails` with query="tracking shipment package"
-→ For each email, call `detect_tracking_email`
-→ Create packages for detected tracking emails
+→ Call `scan_emails_for_packages` to automatically detect and create package records
+→ Then call `get_user_packages` to show all packages with details
 → Respond with full context: "I found 2 packages! 📦 Amazon order arriving tomorrow, 🚚 NOSO package (refused due to tariff, refund issued)"
 
 User: "Where's my package?"
@@ -75,10 +75,13 @@ def create_package_tracking_agent() -> Agent:
     Returns:
         Configured Agent instance for package tracking
     """
+    # Combine package tools with email tools for comprehensive package detection
+    all_tools = PACKAGE_TOOLS + [search_emails, scan_emails_for_packages]
+
     agent = Agent(
         name="Package Tracking Specialist",
         instructions=PACKAGE_TRACKING_AGENT_INSTRUCTIONS,
-        tools=PACKAGE_TOOLS,
+        tools=all_tools,
         handoff_description="Expert in tracking packages and shipments. Transfer here when user asks about deliveries, tracking numbers, or package locations.",
     )
 

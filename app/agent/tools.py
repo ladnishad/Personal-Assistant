@@ -9,6 +9,20 @@ from agents import WebSearchTool, function_tool
 from beanie import PydanticObjectId
 
 from app.config import settings
+from app.agent.email_tools import (
+    find_emails_from_sender,
+    get_email_details,
+    get_email_thread,
+    get_emails_by_category,
+    get_recent_emails,
+    get_related_emails,
+    get_unread_emails,
+    mark_emails_read,
+    scan_emails_for_packages,
+    search_emails,
+    star_email,
+    sync_emails,
+)
 from app.emails.service import EmailService
 from app.memory.models import MemoryType
 from app.memory.schemas import MemoryCreate
@@ -37,39 +51,6 @@ def get_current_user_id() -> PydanticObjectId:
     if _current_user_id is None:
         raise RuntimeError("User ID not set in execution context")
     return _current_user_id
-
-
-@function_tool
-async def search_emails(query: str, limit: int = 5) -> List[Dict[str, Any]]:
-    """Search user's emails by query.
-
-    Use this when the user asks about their emails or wants to find specific messages.
-
-    Args:
-        query: Search query for emails
-        limit: Maximum number of results (default: 5)
-
-    Returns:
-        List of matching emails with sender, subject, snippet, and received date
-    """
-    try:
-        user_id = get_current_user_id()
-        emails, _ = await EmailService.get_user_emails(
-            user_id=user_id, search=query, limit=limit
-        )
-
-        return [
-            {
-                "from": e.from_email,
-                "subject": e.subject,
-                "snippet": e.snippet,
-                "received_at": e.received_at.isoformat(),
-            }
-            for e in emails
-        ]
-    except Exception as e:
-        logger.error(f"Error searching emails: {e}")
-        return []
 
 
 @function_tool
@@ -385,10 +366,24 @@ def clean_message(message: str) -> str:
 
 # List of all agent tools
 AGENT_TOOLS = [
+    # Email management tools
+    get_email_details,
+    get_recent_emails,
     search_emails,
+    get_emails_by_category,
+    find_emails_from_sender,
+    get_unread_emails,
+    mark_emails_read,
+    star_email,
+    sync_emails,
+    get_email_thread,
+    get_related_emails,
+    scan_emails_for_packages,
+    # Task management tools
     create_task,
     get_tasks,
     update_task_content,
+    # Search and memory tools
     WebSearchTool(),  # Built-in OpenAI web search (no external API needed)
     search_memory,
     save_memory,

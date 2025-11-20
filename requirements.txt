@@ -35,7 +35,7 @@ redis>=5.0.1
 
 # LLM & Embeddings
 openai>=2.7.1
-openai-agents>=0.5.1
+openai-agents>=0.6.1
 tiktoken>=0.5.2
 
 # HTTP Client
