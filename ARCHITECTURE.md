@@ -84,21 +84,36 @@ LifeOS is an AI-powered personal life assistant backend built with FastAPI, Mong
 
 ### 3. Email Module (`app/emails/`)
 
-**Purpose**: Email ingestion, storage, and retrieval
+**Purpose**: Privacy-first email metadata ingestion and AI-powered summarization
 
 **Components**:
-- `models.py`: Email document model
+- `models.py`: Email document model (metadata + AI insights only)
 - `schemas.py`: Request/response schemas
-- `gmail_service.py`: Gmail API integration
-- `service.py`: Email sync logic
+- `gmail_service.py`: Gmail API integration with on-demand content fetching
+- `service.py`: Email sync logic with eager summarization
+- `summarizer.py`: LLM-based email summarization and insight extraction
+- `classifier.py`: Email categorization
+- `entity_extractor.py`: Structured entity extraction
 - `router.py`: API endpoints
 
+**Privacy-First Architecture**:
+- **No email bodies stored**: Only metadata (subject, sender, dates) persisted in database
+- **On-demand fetching**: Full email content fetched from Gmail API only when explicitly requested
+- **AI summaries**: 2-3 sentence summaries generated and stored (privacy-safe)
+- **Structured insights**: Action items, key people, dates extracted and stored
+- **Short-lived cache**: Optional Redis cache for recently accessed emails (30 min TTL)
+
 **Features**:
-- Email sync from Gmail/Outlook
+- Email sync from Gmail/Outlook (metadata only)
+- AI-powered email classification (12+ categories)
+- Automatic summarization with hybrid strategy (eager for important, lazy for others)
+- Entity extraction (tracking numbers, amounts, dates, merchants)
+- Action item detection
+- Priority scoring and sentiment analysis
 - Email search and filtering
 - Read/unread, star/unstar
-- Attachment tracking
-- Entity extraction (planned)
+- Attachment metadata tracking
+- Thread and relationship detection
 
 ### 4. Calendar Module (`app/calendar/`)
 
@@ -202,13 +217,24 @@ LifeOS is an AI-powered personal life assistant backend built with FastAPI, Mong
 - Sync state
 - Token expiry
 
-### Email
+### Email (Privacy-First Design)
 - User and integration references
-- Email content and metadata
-- Attachments
-- Labels and status
-- Entity extraction results
-- Vector embeddings
+- **Metadata**: Subject, sender, recipients, dates, message IDs
+- **Snippet**: Short preview (~200 chars) from Gmail (stored for classification)
+- **NO full body**: `body_text`, `body_html` deprecated (fetch on-demand only)
+- Attachment metadata (not content)
+- Labels and status (read, starred, etc.)
+- **AI-generated insights**:
+  - Summary (2-3 sentences)
+  - Action items
+  - Key people and dates
+  - Priority score (0-1)
+  - Sentiment (positive/neutral/negative/urgent)
+  - Response required flag
+- Classification results (category, confidence)
+- Entity extraction results (structured data only)
+- Vector embeddings for semantic search
+- Thread and relationship tracking
 
 ### Calendar Event
 - User and integration references
@@ -236,7 +262,51 @@ LifeOS is an AI-powered personal life assistant backend built with FastAPI, Mong
 - Vector embeddings
 - Access tracking
 
-## Security
+## Security & Privacy
+
+### Privacy-First Email Handling
+
+**Problem**: Storing full email bodies in database creates significant privacy and security risks:
+- Large blast radius if database compromised
+- GDPR/CCPA data minimization violations
+- User trust issues
+- Excessive storage costs
+
+**Solution**: Privacy-first architecture with AI insights
+
+**What We Store**:
+✅ Email metadata (subject, sender, dates, IDs)
+✅ Email snippet (~200 chars preview from Gmail) - needed for classification
+✅ AI-generated summaries (2-3 sentences, privacy-safe)
+✅ Structured insights (action items, key people, dates)
+✅ Classification results (category, priority, sentiment)
+✅ Entity extraction (tracking numbers, amounts - structured only)
+✅ Vector embeddings (for semantic search, not readable)
+
+**What We DON'T Store**:
+❌ Full email bodies (`body_text`, `body_html` - can be 10KB+)
+❌ Attachment content (metadata only)
+
+**Storage Comparison**:
+- Snippet: ~200 bytes (0.2KB) ✅ Stored
+- AI Summary: ~300 bytes (0.3KB) ✅ Stored
+- Full Body: ~10,000 bytes (10KB+) ❌ NOT stored
+- **Privacy Impact**: 98% storage reduction, minimal sensitive data
+
+**How It Works**:
+1. **Email Sync**: Fetch only metadata from Gmail API, store in DB
+2. **Classification**: Categorize emails using LLM (promotional, financial, etc.)
+3. **Eager Summarization**: Important categories (personal, financial, packages) summarized immediately
+4. **Lazy Summarization**: Other emails summarized on first access
+5. **On-Demand Content**: Full email body fetched from Gmail API only when explicitly requested
+6. **Short-Lived Cache**: Redis cache for recently accessed content (30 min TTL, optional)
+
+**Benefits**:
+- **Privacy**: Minimal sensitive data in database
+- **Security**: Reduced blast radius if compromised
+- **Compliance**: GDPR/CCPA data minimization
+- **Performance**: AI features work on summaries, 90%+ storage reduction
+- **User Trust**: Transparent about what we store
 
 ### Authentication
 - JWT access tokens (30 min expiry)
@@ -258,6 +328,7 @@ LifeOS is an AI-powered personal life assistant backend built with FastAPI, Mong
 
 ### Caching
 - Redis for session data (optional)
+- Short-lived email content cache (30 min TTL, privacy-focused)
 - In-memory caching for frequent queries
 
 ### Vector Search

@@ -4,9 +4,11 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from agents import Agent, Runner
+from agents import Agent, ModelSettings, Runner
 from beanie import PydanticObjectId
+from openai.types.responses import ResponseTextDeltaEvent
 
+from app.agent.citations import extract_citations, process_content_with_citations
 from app.agent.guardrails import OUTPUT_GUARDRAILS
 from app.agent.package_agent import create_package_tracking_agent
 from app.agent.package_tools import set_package_user_id
@@ -17,6 +19,7 @@ from app.agent.tools import (
     _search_memory_internal,
     clean_message,
     extract_remember_commands,
+    set_current_citations,
     set_current_user_id,
 )
 from app.auth.models import User
@@ -260,6 +263,7 @@ You already know this basic information about the user, so don't ask for it."""
         message: str,
         use_memory: bool = True,
         conversation_id: Optional[str] = None,
+        task_id: Optional[str] = None,
         conversation_history: Optional[list] = None,
     ) -> Dict[str, Any]:
         """Process user message with agent orchestrator using Agents SDK.
@@ -269,6 +273,7 @@ You already know this basic information about the user, so don't ask for it."""
             message: User's message
             use_memory: Whether to use long-term memory
             conversation_id: Existing conversation ID or None for new
+            task_id: Task ID to link this conversation to
             conversation_history: Optional conversation history (for compatibility)
 
         Returns:
@@ -322,12 +327,22 @@ You already know this basic information about the user, so don't ask for it."""
             # Create package tracking agent (will use contextvar user_id in tools)
             package_agent = create_package_tracking_agent()
 
+            # Optimize model settings for faster responses
+            # For GPT-5 models, use low reasoning effort for speed
+            model_settings = None
+            if settings.openai_model.startswith("gpt-5"):
+                model_settings = ModelSettings(
+                    reasoning_effort="low",  # Faster responses
+                    verbosity="low",  # Less verbose reasoning
+                )
+
             # Create agent with guardrails and handoffs
             agent = Agent(
                 name="LifeOS Assistant",
                 instructions=instructions,
                 tools=AGENT_TOOLS,
                 model=settings.openai_model,
+                model_settings=model_settings,
                 output_guardrails=OUTPUT_GUARDRAILS,
                 handoffs=[package_agent],  # Add package tracking agent as handoff
             )
@@ -349,6 +364,15 @@ You already know this basic information about the user, so don't ask for it."""
 
             # Get final message
             final_message = result.final_output
+
+            # Extract citations from web search results
+            citations = extract_citations(result)
+            if citations:
+                logger.info(f"Extracted {len(citations)} citations from web search")
+                # Set citations in context for tools to access
+                set_current_citations(citations)
+                # Process final message to replace citation placeholders
+                final_message = process_content_with_citations(final_message, citations)
 
             # Prepend @remember confirmations to response if any
             if remember_responses:
@@ -417,6 +441,45 @@ You already know this basic information about the user, so don't ask for it."""
                             "action": "updated",
                         }
 
+            # Post-process task content with citations if needed
+            if citations and (task_reference or task_created):
+                try:
+                    from app.tasks.service import TaskService
+                    from app.tasks.schemas import TaskUpdate
+
+                    # Get task ID from either task_reference or task_created
+                    task_id = None
+                    if task_reference and task_reference.get("task_id"):
+                        task_id = task_reference["task_id"]
+                    elif task_created and task_created.get("task_id"):
+                        task_id = task_created["task_id"]
+
+                    if task_id:
+                        task = await TaskService.get_task(task_id, user_id)
+
+                        if task and task.content:
+                            # Check if content has citation placeholders (more robust check)
+                            import re
+                            citation_pattern = r'\bcite[a-z]*\d+[a-z]*\d*\b'
+                            if re.search(citation_pattern, task.content, re.IGNORECASE):
+                                logger.info(f"Post-processing task {task_id} with {len(citations)} citations")
+                                processed_content = process_content_with_citations(
+                                    task.content, citations
+                                )
+
+                                # Only update if content actually changed
+                                if processed_content != task.content:
+                                    await TaskService.update_task(
+                                        task_id, user_id, TaskUpdate(content=processed_content)
+                                    )
+                                    logger.info(
+                                        f"Successfully replaced citations in task {task_id} with dual format"
+                                    )
+                                else:
+                                    logger.info(f"No citation changes needed for task {task_id}")
+                except Exception as e:
+                    logger.error(f"Error post-processing task citations: {e}", exc_info=True)
+
             # If task was created but content wasn't updated, still reference the created task
             if not task_reference and task_created:
                 task_reference = task_created
@@ -439,6 +502,38 @@ You already know this basic information about the user, so don't ask for it."""
 
             # Get conversation ID from session
             conversation_id_result = session.get_conversation_id()
+
+            # Link conversation to task if task_id was provided (for task-specific chats)
+            if task_id and conversation_id_result:
+                try:
+                    from beanie import PydanticObjectId
+                    from app.conversations.models import Conversation
+
+                    conv = await Conversation.get(conversation_id_result)
+                    if conv and not conv.task_id:  # Only set if not already set
+                        conv.task_id = PydanticObjectId(task_id)
+                        await conv.save()
+                        logger.info(
+                            f"Linked conversation {conversation_id_result} to task {task_id}"
+                        )
+                except Exception as e:
+                    logger.error(f"Error linking conversation to task from task_id: {e}", exc_info=True)
+
+            # Also link conversation to task if a task was created or updated
+            if task_reference and task_reference.get("task_id"):
+                try:
+                    from beanie import PydanticObjectId
+                    from app.conversations.models import Conversation
+
+                    conv = await Conversation.get(conversation_id_result)
+                    if conv and not conv.task_id:  # Only set if not already set
+                        conv.task_id = PydanticObjectId(task_reference["task_id"])
+                        await conv.save()
+                        logger.info(
+                            f"Linked conversation {conversation_id_result} to task {task_reference['task_id']}"
+                        )
+                except Exception as e:
+                    logger.error(f"Error linking conversation to task from task_reference: {e}", exc_info=True)
 
             return {
                 "message": final_message,
@@ -464,3 +559,363 @@ You already know this basic information about the user, so don't ask for it."""
                 "memories_saved": 0,
                 "task_reference": None,
             }
+        finally:
+            # Clear citations context to avoid leaking between requests
+            set_current_citations([])
+
+    @staticmethod
+    async def chat_streamed(
+        user: User,
+        message: str,
+        use_memory: bool = True,
+        conversation_id: Optional[str] = None,
+        task_id: Optional[str] = None,
+    ):
+        """Process user message with streaming using Agents SDK.
+
+        Yields Server-Sent Events (SSE) formatted strings for real-time updates.
+
+        Args:
+            user: The user making the request
+            message: User's message
+            use_memory: Whether to use long-term memory
+            conversation_id: Existing conversation ID or None for new
+            task_id: Task ID to link this conversation to
+
+        Yields:
+            SSE-formatted event strings (event: <type>\ndata: <json>\n\n)
+        """
+        import json
+        import time
+
+        try:
+            start_time = time.time()
+            user_id = user.id
+
+            # Ensure user profile is in long-term memory
+            await AgentService._ensure_user_profile_memory(user)
+            logger.info(f"⏱️  Profile check: {time.time() - start_time:.2f}s")
+
+            # Set user context for tools
+            set_current_user_id(user_id)
+
+            # Extract any @remember commands from message
+            remember_commands = extract_remember_commands(message)
+            clean_msg = clean_message(message)
+
+            # Process @remember commands first
+            remember_responses = []
+            if remember_commands:
+                for mem_content in remember_commands:
+                    result = await _save_memory_internal(
+                        content=mem_content,
+                        memory_type="note",
+                        importance=0.9,
+                    )
+                    if result.get("saved"):
+                        remember_responses.append(f"✓ Remembered: {mem_content}")
+
+                logger.info(f"Saved {len(remember_commands)} @remember commands for user {user_id}")
+
+            # Retrieve relevant memories for context
+            context_memories = []
+            if use_memory:
+                mem_start = time.time()
+                context_memories = await _search_memory_internal(clean_msg or message, limit=5)
+                logger.info(f"⏱️  Memory search: {time.time() - mem_start:.2f}s")
+                if context_memories:
+                    logger.info(f"Retrieved {len(context_memories)} memories for context")
+
+            # Build system instructions
+            instructions = AgentService._get_system_instructions(user, context_memories)
+
+            # Set user context for package tools
+            set_package_user_id(user_id)
+
+            # Create package tracking agent
+            package_agent = create_package_tracking_agent()
+
+            # Optimize model settings for faster responses
+            # For GPT-5 models, use low reasoning effort for speed
+            model_settings = None
+            if settings.openai_model.startswith("gpt-5"):
+                model_settings = ModelSettings(
+                    reasoning_effort="low",  # Faster responses
+                    verbosity="low",  # Less verbose reasoning
+                )
+
+            # Create agent with guardrails and handoffs
+            agent = Agent(
+                name="LifeOS Assistant",
+                instructions=instructions,
+                tools=AGENT_TOOLS,
+                model=settings.openai_model,
+                model_settings=model_settings,
+                output_guardrails=OUTPUT_GUARDRAILS,
+                handoffs=[package_agent],
+            )
+
+            # Create session for conversation history
+            session = MongoDBConversationSession(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                max_history_messages=20,
+            )
+
+            # Emit initial status and flush to establish connection
+            initial_event = f"event: agent_status\ndata: {json.dumps({'status': 'thinking', 'message': 'Processing your request...'})}\n\n"
+            logger.info(f"🚀 Emitting initial status event")
+            yield initial_event
+
+            # Run agent with streaming
+            agent_start = time.time()
+            logger.info(f"Running streamed agent with model: {settings.openai_model}")
+            result = Runner.run_streamed(
+                agent,
+                clean_msg or message,
+                session=session,
+            )
+            logger.info(f"⏱️  Agent stream initialized: {time.time() - agent_start:.2f}s")
+            logger.info(f"🔄 Starting to consume stream events...")
+
+            # Track state for processing
+            tools_used = []
+            actions_taken = []
+            message_parts = []
+            current_tool_calls = {}  # Map call_id to tool info
+
+            # Process streaming events
+            async for event in result.stream_events():
+                logger.info(f"🔥 Stream event type: {event.type}")
+
+                # Handle raw response events (token-by-token LLM output)
+                if event.type == "raw_response_event" and isinstance(event.data, ResponseTextDeltaEvent):
+                    delta_text = event.data.delta
+                    message_parts.append(delta_text)
+                    logger.info(f"📨 Emitting delta: {delta_text[:50]}")
+
+                    # Emit message delta
+                    yield f"event: message_delta\ndata: {json.dumps({'delta': delta_text})}\n\n"
+
+                # Handle run item events (completed items like tool calls, messages)
+                elif event.type == "run_item_stream_event":
+                    item = event.item
+                    item_type = item.type
+                    logger.info(f"🔧 Run item event - item type: {item_type}")
+
+                    # Tool call item
+                    if item_type == "tool_call_item":
+                        tool_name = getattr(item, "name", None)
+                        tool_args = getattr(item, "arguments", {})
+                        call_id = getattr(item, "id", None)
+
+                        if tool_name:
+                            tools_used.append(tool_name)
+                            if call_id:
+                                current_tool_calls[call_id] = {
+                                    "name": tool_name,
+                                    "args": tool_args,
+                                }
+
+                            # Emit tool call event
+                            tool_event = {
+                                "tool_name": tool_name,
+                                "tool_args": tool_args,
+                                "call_id": call_id or tool_name,
+                            }
+                            yield f"event: tool_call\ndata: {json.dumps(tool_event)}\n\n"
+
+                            # Emit status update
+                            friendly_name = tool_name.replace("_", " ").title()
+                            yield f"event: agent_status\ndata: {json.dumps({'status': 'calling_tool', 'message': f'Using {friendly_name}...'})}\n\n"
+
+                    # Tool call output item
+                    elif item_type == "tool_call_output_item":
+                        call_id = getattr(item, "call_id", None)
+                        output = getattr(item, "output", None)
+
+                        # Try to find matching tool call
+                        tool_name = None
+                        tool_args = {}
+                        if call_id and call_id in current_tool_calls:
+                            tool_info = current_tool_calls[call_id]
+                            tool_name = tool_info["name"]
+                            tool_args = tool_info["args"]
+
+                        if tool_name:
+                            actions_taken.append(
+                                {
+                                    "tool": tool_name,
+                                    "args": tool_args,
+                                    "result": output,
+                                }
+                            )
+
+                            # Emit tool result event
+                            result_event = {
+                                "tool_name": tool_name,
+                                "call_id": call_id,
+                                "result": str(output)[:200] if output else None,
+                            }
+                            yield f"event: tool_result\ndata: {json.dumps(result_event)}\n\n"
+
+                            # Emit status update
+                            yield f"event: agent_status\ndata: {json.dumps({'status': 'processing', 'message': 'Processing results...'})}\n\n"
+
+                    # Message output item (final message)
+                    elif item_type == "message_output_item":
+                        # Message is complete, handled at the end
+                        pass
+
+                # Handle agent update events (handoffs)
+                elif event.type == "agent_updated_stream_event":
+                    # Use new_agent as per documentation
+                    agent_name = event.new_agent.name
+                    yield f"event: agent_status\ndata: {json.dumps({'status': 'handoff', 'message': f'Transferred to {agent_name}'})}\n\n"
+
+            # Stream complete
+            logger.info(f"✅ Stream events loop complete")
+            logger.info(f"⏱️  Total streaming time: {time.time() - agent_start:.2f}s")
+
+            # Get final message from result
+            final_message = result.final_output
+            logger.info(f"📝 Final message length: {len(final_message)} chars")
+
+            # Extract citations from web search results
+            citations = extract_citations(result)
+            if citations:
+                logger.info(f"Extracted {len(citations)} citations from web search")
+                set_current_citations(citations)
+                final_message = process_content_with_citations(final_message, citations)
+
+            # Prepend @remember confirmations to response if any
+            if remember_responses:
+                final_message = "\n".join(remember_responses) + "\n\n" + final_message
+
+            # Emit complete message
+            yield f"event: message_complete\ndata: {json.dumps({'message': final_message})}\n\n"
+
+            # Detect task references from actions taken
+            task_reference = None
+            task_created = None
+
+            for action in actions_taken:
+                if action["tool"] == "create_task" and isinstance(action.get("result"), dict):
+                    if action["result"].get("created"):
+                        task_created = {
+                            "task_id": action["result"]["id"],
+                            "task_title": action["result"]["title"],
+                            "action": "created",
+                        }
+                elif action["tool"] == "update_task_content" and isinstance(
+                    action.get("result"), dict
+                ):
+                    if action["result"].get("content_updated"):
+                        task_reference = {
+                            "task_id": action["result"]["id"],
+                            "task_title": action["result"]["title"],
+                            "action": "updated",
+                        }
+
+            # Post-process task content with citations if needed
+            if citations and (task_reference or task_created):
+                try:
+                    from app.tasks.service import TaskService
+                    from app.tasks.schemas import TaskUpdate
+
+                    # Get task ID from either task_reference or task_created
+                    task_id = None
+                    if task_reference and task_reference.get("task_id"):
+                        task_id = task_reference["task_id"]
+                    elif task_created and task_created.get("task_id"):
+                        task_id = task_created["task_id"]
+
+                    if task_id:
+                        task = await TaskService.get_task(task_id, user_id)
+
+                        if task and task.content:
+                            # Check if content has citation placeholders (more robust check)
+                            import re
+                            citation_pattern = r'\bcite[a-z]*\d+[a-z]*\d*\b'
+                            if re.search(citation_pattern, task.content, re.IGNORECASE):
+                                logger.info(f"Post-processing task {task_id} with {len(citations)} citations")
+                                processed_content = process_content_with_citations(
+                                    task.content, citations
+                                )
+
+                                # Only update if content actually changed
+                                if processed_content != task.content:
+                                    await TaskService.update_task(
+                                        task_id, user_id, TaskUpdate(content=processed_content)
+                                    )
+                                    logger.info(
+                                        f"Successfully replaced citations in task {task_id} with dual format"
+                                    )
+                                else:
+                                    logger.info(f"No citation changes needed for task {task_id}")
+                except Exception as e:
+                    logger.error(f"Error post-processing task citations: {e}", exc_info=True)
+
+            # If task was created but content wasn't updated, still reference the created task
+            if not task_reference and task_created:
+                task_reference = task_created
+
+            # Get conversation ID from session
+            conversation_id_result = session.get_conversation_id()
+
+            # Link conversation to task if task_id was provided (for task-specific chats)
+            if task_id and conversation_id_result:
+                try:
+                    from beanie import PydanticObjectId
+                    from app.conversations.models import Conversation
+
+                    conv = await Conversation.get(conversation_id_result)
+                    if conv and not conv.task_id:  # Only set if not already set
+                        conv.task_id = PydanticObjectId(task_id)
+                        await conv.save()
+                        logger.info(
+                            f"Linked conversation {conversation_id_result} to task {task_id}"
+                        )
+                except Exception as e:
+                    logger.error(f"Error linking conversation to task from task_id: {e}", exc_info=True)
+
+            # Also link conversation to task if a task was created or updated
+            if task_reference and task_reference.get("task_id"):
+                try:
+                    from beanie import PydanticObjectId
+                    from app.conversations.models import Conversation
+
+                    conv = await Conversation.get(conversation_id_result)
+                    if conv and not conv.task_id:  # Only set if not already set
+                        conv.task_id = PydanticObjectId(task_reference["task_id"])
+                        await conv.save()
+                        logger.info(
+                            f"Linked conversation {conversation_id_result} to task {task_reference['task_id']}"
+                        )
+                except Exception as e:
+                    logger.error(f"Error linking conversation to task from task_reference: {e}", exc_info=True)
+
+            # Emit final done event with metadata
+            done_data = {
+                "conversation_id": conversation_id_result,
+                "tools_used": tools_used,
+                "context_retrieved": len(context_memories),
+                "actions_taken": actions_taken,
+                "memories_saved": len(remember_commands)
+                + sum(1 for a in actions_taken if a["tool"] == "save_memory"),
+                "task_reference": task_reference,
+            }
+            logger.info(f"🏁 Emitting done event")
+            yield f"event: done\ndata: {json.dumps(done_data)}\n\n"
+
+            logger.info(f"⏱️  Total request time: {time.time() - start_time:.2f}s")
+            logger.info(f"✅ Streaming complete!")
+
+        except Exception as e:
+            logger.error(f"Error in streamed agent chat: {e}", exc_info=True)
+            error_data = {"error": str(e)}
+            yield f"event: error\ndata: {json.dumps(error_data)}\n\n"
+
+        finally:
+            # Clear citations context to avoid leaking between requests
+            set_current_citations([])

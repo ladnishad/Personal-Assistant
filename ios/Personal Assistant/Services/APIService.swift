@@ -302,6 +302,7 @@ class APIService {
         message: String,
         useMemory: Bool = true,
         conversationId: String? = nil,
+        taskId: String? = nil,
         conversationHistory: [ConversationHistoryMessage]? = nil
     ) async throws -> AgentChatResponse {
         let request = AgentChatRequest(
@@ -309,9 +310,187 @@ class APIService {
             context: nil,
             useMemory: useMemory,
             conversationId: conversationId,
+            taskId: taskId,
             conversationHistory: conversationHistory
         )
         return try await self.request(endpoint: "/agent/chat", method: "POST", body: request, requiresAuth: true)
+    }
+
+    func sendChatMessageStreaming(
+        message: String,
+        useMemory: Bool = true,
+        conversationId: String? = nil,
+        taskId: String? = nil
+    ) -> AsyncThrowingStream<StreamEvent, Error> {
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    print("🌐 Setting up stream connection...")
+                    guard let url = URL(string: baseURL + "/agent/chat/stream") else {
+                        print("❌ Invalid URL")
+                        continuation.finish(throwing: APIError.invalidURL)
+                        return
+                    }
+                    print("🔗 URL: \(url)")
+
+                    var request = URLRequest(url: url)
+                    request.httpMethod = "POST"
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    request.timeoutInterval = 300  // 5 minutes timeout for streaming
+
+                    if let token = accessToken {
+                        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                    }
+
+                    let requestBody = AgentChatRequest(
+                        message: message,
+                        context: nil,
+                        useMemory: useMemory,
+                        conversationId: conversationId,
+                        taskId: taskId,
+                        conversationHistory: nil
+                    )
+                    request.httpBody = try encoder.encode(requestBody)
+
+                    print("📡 Sending request...")
+                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+
+                    guard let httpResponse = response as? HTTPURLResponse else {
+                        print("❌ Invalid response")
+                        continuation.finish(throwing: APIError.invalidResponse)
+                        return
+                    }
+
+                    print("✅ HTTP \(httpResponse.statusCode)")
+                    guard httpResponse.statusCode == 200 else {
+                        print("❌ Server error: \(httpResponse.statusCode)")
+                        continuation.finish(throwing: APIError.serverError("HTTP \(httpResponse.statusCode)"))
+                        return
+                    }
+
+                    print("🔄 Starting to read stream...")
+                    // Parse SSE stream
+                    var eventType: String?
+                    var eventData = ""
+
+                    for try await line in bytes.lines {
+                        print("📥 Line: \(line)")
+
+                        if line.hasPrefix("event: ") {
+                            // Process previous event if we have one
+                            if let event = eventType, !eventData.isEmpty {
+                                print("🎯 Parsing event: \(event)")
+                                if let streamEvent = self.parseSSEEvent(type: event, data: eventData) {
+                                    print("✅ Yielding event: \(streamEvent)")
+                                    continuation.yield(streamEvent)
+                                } else {
+                                    print("⚠️ Failed to parse event: \(event)")
+                                }
+                            }
+
+                            // Start new event
+                            eventType = String(line.dropFirst(7))
+                            eventData = ""
+                            print("🏷️ Event type: \(eventType ?? "nil")")
+
+                        } else if line.hasPrefix("data: ") {
+                            eventData = String(line.dropFirst(6))
+                            print("📦 Event data: \(eventData.prefix(100))")
+
+                            // Process immediately after receiving data
+                            if let event = eventType, !eventData.isEmpty {
+                                print("🎯 Parsing event: \(event)")
+                                if let streamEvent = self.parseSSEEvent(type: event, data: eventData) {
+                                    print("✅ Yielding event: \(streamEvent)")
+                                    continuation.yield(streamEvent)
+                                } else {
+                                    print("⚠️ Failed to parse event: \(event)")
+                                }
+                                // Clear for next event
+                                eventType = nil
+                                eventData = ""
+                            }
+                        }
+                    }
+
+                    print("🏁 Stream finished")
+                    continuation.finish()
+                } catch {
+                    print("❌ Stream error: \(error)")
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    private func parseSSEEvent(type: String, data: String) -> StreamEvent? {
+        guard let jsonData = data.data(using: .utf8) else {
+            print("❌ Failed to convert data to UTF8")
+            return nil
+        }
+
+        switch type {
+        case "agent_status":
+            do {
+                let eventData = try decoder.decode(AgentStatusEventData.self, from: jsonData)
+                return .agentStatus(status: eventData.status, message: eventData.message)
+            } catch {
+                print("❌ Failed to decode agent_status: \(error)")
+            }
+        case "tool_call":
+            do {
+                let eventData = try decoder.decode(ToolCallEventData.self, from: jsonData)
+                let args = eventData.toolArgs.mapValues { $0.value }
+                return .toolCall(toolName: eventData.toolName, callId: eventData.callId, args: args)
+            } catch {
+                print("❌ Failed to decode tool_call: \(error)")
+            }
+        case "tool_result":
+            do {
+                let eventData = try decoder.decode(ToolResultEventData.self, from: jsonData)
+                return .toolResult(toolName: eventData.toolName, callId: eventData.callId, result: eventData.result)
+            } catch {
+                print("❌ Failed to decode tool_result: \(error)")
+            }
+        case "message_delta":
+            do {
+                let eventData = try decoder.decode(MessageDeltaEventData.self, from: jsonData)
+                return .messageDelta(delta: eventData.delta)
+            } catch {
+                print("❌ Failed to decode message_delta: \(error)")
+                print("Data was: \(data)")
+            }
+        case "message_complete":
+            do {
+                let eventData = try decoder.decode(MessageCompleteEventData.self, from: jsonData)
+                return .messageComplete(message: eventData.message)
+            } catch {
+                print("❌ Failed to decode message_complete: \(error)")
+            }
+        case "done":
+            do {
+                let eventData = try decoder.decode(DoneEventData.self, from: jsonData)
+                return .done(
+                    conversationId: eventData.conversationId,
+                    toolsUsed: eventData.toolsUsed,
+                    actionsTaken: eventData.actionsTaken,
+                    taskReference: eventData.taskReference
+                )
+            } catch {
+                print("❌ Failed to decode done: \(error)")
+            }
+        case "error":
+            do {
+                let eventData = try decoder.decode(ErrorEventData.self, from: jsonData)
+                return .error(error: eventData.error)
+            } catch {
+                print("❌ Failed to decode error: \(error)")
+            }
+        default:
+            print("❌ Unknown event type: \(type)")
+        }
+
+        return nil
     }
 
     // MARK: - Conversations
@@ -329,5 +508,10 @@ class APIService {
     func deleteConversation(id: String) async throws {
         struct Empty: Codable {}
         let _: Empty = try await request(endpoint: "/conversations/\(id)", method: "DELETE", requiresAuth: true)
+    }
+
+    func getConversationByTask(taskId: String) async throws -> ConversationWithMessages {
+        let endpoint = "/conversations/by-task/\(taskId)"
+        return try await request(endpoint: endpoint, requiresAuth: true)
     }
 }

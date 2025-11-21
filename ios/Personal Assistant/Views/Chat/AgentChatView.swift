@@ -28,13 +28,66 @@ struct AgentChatView: View {
                             }
 
                             if viewModel.isLoading {
-                                HStack {
-                                    ProgressView()
-                                        .padding()
-                                        .background(Color(.systemGray6))
-                                        .cornerRadius(20)
+                                HStack(alignment: .top, spacing: 12) {
+                                    // AI Avatar
+                                    ZStack {
+                                        Circle()
+                                            .fill(LinearGradient(
+                                                colors: [.blue.opacity(0.6), .purple.opacity(0.6)],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            ))
+                                            .frame(width: 32, height: 32)
 
-                                    Spacer()
+                                        Image(systemName: "sparkles")
+                                            .font(.system(size: 14))
+                                            .foregroundColor(.white)
+                                    }
+
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        // Streaming message bubble (only if there's content)
+                                        if !viewModel.streamingMessage.isEmpty {
+                                            if let attributedString = try? AttributedString(markdown: viewModel.streamingMessage) {
+                                                Text(attributedString)
+                                                    .font(.body)
+                                                    .padding(14)
+                                                    .background(
+                                                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                                            .fill(Color(.systemGray6))
+                                                    )
+                                                    .textSelection(.enabled)
+                                            } else {
+                                                Text(viewModel.streamingMessage)
+                                                    .font(.body)
+                                                    .padding(14)
+                                                    .background(
+                                                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                                            .fill(Color(.systemGray6))
+                                                    )
+                                                    .foregroundColor(.primary)
+                                            }
+                                        }
+
+                                        // Agent status indicator
+                                        if let status = viewModel.agentStatus {
+                                            HStack(spacing: 6) {
+                                                ProgressView()
+                                                    .scaleEffect(0.7)
+
+                                                Text(status)
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 6)
+                                            .background(
+                                                Capsule()
+                                                    .fill(Color(.systemGray5).opacity(0.5))
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(minLength: 50)
                                 }
                                 .padding(.horizontal)
                             }
@@ -44,6 +97,14 @@ struct AgentChatView: View {
                     .onChange(of: viewModel.messages.count) { _, _ in
                         if let lastMessage = viewModel.messages.last {
                             withAnimation {
+                                proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                            }
+                        }
+                    }
+                    .onChange(of: viewModel.streamingMessage) { _, _ in
+                        // Auto-scroll as streaming message updates
+                        if viewModel.isLoading, let lastMessage = viewModel.messages.last {
+                            withAnimation(.easeOut(duration: 0.2)) {
                                 proxy.scrollTo(lastMessage.id, anchor: .bottom)
                             }
                         }

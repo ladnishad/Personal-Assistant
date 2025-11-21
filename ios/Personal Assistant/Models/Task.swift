@@ -39,7 +39,7 @@ struct TaskItem: Codable, Identifiable {
 }
 
 enum TaskStatus: String, Codable {
-    case todo, inProgress = "in_progress", done, cancelled
+    case todo, done
 }
 
 enum TaskPriority: String, Codable {

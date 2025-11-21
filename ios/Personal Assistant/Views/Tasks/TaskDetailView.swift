@@ -13,6 +13,8 @@ struct TaskDetailView: View {
     let taskId: String
     @StateObject private var viewModel: TaskDetailViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var showChatSheet = false
+    @State private var isTaskUpdating = false
 
     init(taskId: String) {
         self.taskId = taskId
@@ -20,7 +22,8 @@ struct TaskDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
+        ZStack(alignment: .bottom) {
+            ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 if viewModel.isLoading {
                     ProgressView()
@@ -110,9 +113,81 @@ struct TaskDetailView: View {
                 }
             }
             .padding(.vertical)
+            .padding(.bottom, 80) // Add padding for chat trigger
+        }
+
+            // Chat trigger button at bottom
+            if let task = viewModel.task {
+                VStack {
+                    Spacer()
+
+                    HStack {
+                        Spacer()
+
+                        Button(action: {
+                            showChatSheet = true
+                        }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 14, weight: .semibold))
+
+                                Text("Ask about this task...")
+                                    .font(.subheadline)
+                            }
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 25)
+                                    .fill(Color(.systemGray6))
+                                    .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 2)
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        Spacer()
+                    }
+                    .padding(.bottom, 20)
+                    .overlay(
+                        Group {
+                            if isTaskUpdating {
+                                HStack(spacing: 6) {
+                                    ProgressView()
+                                        .scaleEffect(0.7)
+                                    Text("Updating task...")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(
+                                    Capsule()
+                                        .fill(Color(.systemBackground))
+                                        .shadow(color: .black.opacity(0.1), radius: 4)
+                                )
+                                .offset(y: -60)
+                            }
+                        }
+                    )
+                }
+                .sheet(isPresented: $showChatSheet) {
+                    TaskChatSheet(taskId: taskId, task: task) {
+                        // Reload task when chat updates it
+                        isTaskUpdating = true
+                        Task {
+                            try? await Task.sleep(nanoseconds: 500_000_000) // Small delay for animation
+                            await viewModel.loadTask()
+                            isTaskUpdating = false
+                        }
+                    }
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+                }
+            }
         }
         .navigationTitle("Task Details")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .task {
             await viewModel.loadTask()
         }
@@ -229,18 +304,14 @@ struct TaskDetailView: View {
     private func colorForStatus(_ status: TaskStatus) -> Color {
         switch status {
         case .todo: return .blue
-        case .inProgress: return .orange
         case .done: return .green
-        case .cancelled: return .gray
         }
     }
 
     private func statusText(_ status: TaskStatus) -> String {
         switch status {
         case .todo: return "To Do"
-        case .inProgress: return "In Progress"
         case .done: return "Done"
-        case .cancelled: return "Cancelled"
         }
     }
 }

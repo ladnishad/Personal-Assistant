@@ -66,7 +66,11 @@ class TaskService:
         skip: int = 0,
         limit: int = 50,
     ) -> tuple[List[Task], int]:
-        """Get user tasks with filters."""
+        """Get user tasks with filters.
+
+        Tasks are sorted with incomplete (todo) tasks first, then completed (done) tasks,
+        with each group sorted by created_at descending (newest first).
+        """
         query = {"user_id": user_id}
 
         if status:
@@ -75,17 +79,20 @@ class TaskService:
         if priority:
             query["priority"] = priority
 
-        # Get tasks
-        tasks = (
-            await Task.find(query)
-            .sort(-Task.created_at)
-            .skip(skip)
-            .limit(limit)
-            .to_list()
-        )
-
         # Get total count
         total = await Task.find(query).count()
+
+        # Get all tasks (before pagination) to sort properly
+        all_tasks = await Task.find(query).sort(-Task.created_at).to_list()
+
+        # Sort: incomplete first, then completed, both newest first
+        sorted_tasks = sorted(
+            all_tasks,
+            key=lambda t: (t.status == TaskStatus.DONE, -t.created_at.timestamp()),
+        )
+
+        # Apply pagination after sorting
+        tasks = sorted_tasks[skip : skip + limit]
 
         return tasks, total
 

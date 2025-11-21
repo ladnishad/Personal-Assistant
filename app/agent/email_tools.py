@@ -9,9 +9,12 @@ from beanie import PydanticObjectId
 
 from app.emails.classifier import classify_email
 from app.emails.entity_extractor import EmailEntityExtractor
+from app.emails.gmail_service import GmailService
 from app.emails.models import Email, EmailLabel
 from app.emails.relationships import EmailRelationshipDetector
 from app.emails.service import EmailService
+from app.emails.summarizer import EmailSummarizer
+from app.integrations.models import Integration
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +57,7 @@ def _format_email_response(email: Email) -> Dict[str, Any]:
         email: Email document
 
     Returns:
-        Structured dictionary with email data
+        Structured dictionary with email data (NO raw body, privacy-safe)
     """
     # Extract key entities only (avoid full dict)
     key_entities = {}
@@ -75,8 +78,6 @@ def _format_email_response(email: Email) -> Dict[str, Any]:
         "from_name": email.from_name,
         "to": email.to,
         "subject": email.subject,
-        "snippet": email.snippet,
-        "body_text": email.body_text[:1000] if email.body_text else None,  # Limit size
         "received_at": email.received_at.isoformat(),
         "is_read": email.is_read,
         "is_starred": email.is_starred,
@@ -84,28 +85,40 @@ def _format_email_response(email: Email) -> Dict[str, Any]:
         "has_attachments": email.has_attachments,
         "category": email.email_category,
         "category_confidence": email.category_confidence,
-        "key_entities": key_entities,  # Only key extracted entities
+        "key_entities": key_entities,
+        # AI-generated insights (privacy-safe)
+        "ai_summary": email.ai_summary,
+        "action_items": email.action_items,
+        "key_people": email.key_people,
+        "key_dates": [d.isoformat() for d in email.key_dates] if email.key_dates else [],
+        "priority_score": email.priority_score,
+        "requires_response": email.requires_response,
+        "sentiment": email.sentiment,
     }
 
 
 @function_tool
 async def get_email_details(email_id: str) -> Dict[str, Any]:
-    """Get full details of a specific email with all metadata and extracted information.
+    """Get full details of a specific email with AI summary and extracted information.
 
     Use this when:
     - User asks to read a specific email
     - User references "that email" or "the email from X"
-    - You need full email content to answer a question
+    - You need email summary and metadata to answer a question
 
     Args:
         email_id: The ID of the email to retrieve
 
     Returns:
         Complete email details including:
-        - Full content (subject, body, sender)
+        - AI-generated summary (2-3 sentences, privacy-safe)
         - Classification category and confidence
         - Extracted entities (tracking numbers, amounts, dates, etc.)
+        - Action items, key people, dates
         - Email metadata (read status, labels, attachments)
+
+    Note: Full email body is NOT returned for privacy. Use get_email_full_content()
+    if you need the complete email text.
     """
     try:
         user_id = get_current_user_id()
@@ -136,10 +149,87 @@ async def get_email_details(email_id: str) -> Dict[str, Any]:
             email.entities_extracted_at = datetime.utcnow()
             await email.save()
 
+        # Generate AI summary if not present (lazy summarization)
+        if not email.ai_summary:
+            # Get user's integration to fetch content
+            integration = await Integration.find_one(
+                Integration.id == email.integration_id
+            )
+            if integration:
+                await EmailSummarizer.summarize_email(email, integration)
+                # Reload email to get updated summary
+                email = await Email.get(PydanticObjectId(email_id))
+
         return _format_email_response(email)
 
     except Exception as e:
         logger.error(f"Error getting email details: {e}", exc_info=True)
+        return {"error": str(e)}
+
+
+@function_tool
+async def get_email_full_content(email_id: str) -> Dict[str, Any]:
+    """Fetch the FULL email body content on-demand from email provider.
+
+    Use this ONLY when:
+    - User explicitly asks to read the full email text
+    - The AI summary is insufficient for the user's needs
+    - You need specific details not captured in the summary
+
+    WARNING: This fetches sensitive email content. Use sparingly.
+
+    Args:
+        email_id: The ID of the email to retrieve full content for
+
+    Returns:
+        Dictionary with:
+        - body_text: Full email body (plain text)
+        - body_html: Full email body (HTML)
+        - snippet: Email snippet
+        - All fields from get_email_details()
+    """
+    try:
+        user_id = get_current_user_id()
+
+        # Get email
+        email = await Email.get(PydanticObjectId(email_id))
+
+        if not email:
+            return {"error": "Email not found"}
+
+        # Verify ownership
+        if email.user_id != user_id:
+            return {"error": "Not authorized to access this email"}
+
+        # Get user's integration
+        integration = await Integration.find_one(
+            Integration.id == email.integration_id
+        )
+
+        if not integration:
+            return {"error": "Email integration not found"}
+
+        # Fetch full content on-demand from Gmail
+        content = await GmailService.fetch_email_content(
+            integration, email.message_id
+        )
+
+        if not content:
+            return {"error": "Failed to fetch email content from provider"}
+
+        # Get standard email details
+        email_details = _format_email_response(email)
+
+        # Add full content
+        email_details["body_text"] = content["body_text"]
+        email_details["body_html"] = content["body_html"]
+        email_details["snippet"] = content["snippet"]
+
+        logger.info(f"Fetched full content for email {email_id}")
+        return email_details
+
+    except Exception as e:
+        logger.error(f"Error getting full email content: {e}", exc_info=True)
         return {"error": str(e)}
 
 

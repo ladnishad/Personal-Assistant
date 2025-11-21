@@ -82,6 +82,7 @@ def create_package_tracking_agent() -> Agent:
         name="Package Tracking Specialist",
         instructions=PACKAGE_TRACKING_AGENT_INSTRUCTIONS,
         tools=all_tools,
+        model="gpt-5-nano",  # Explicitly use nano for fast, cheap package tracking
         handoff_description="Expert in tracking packages and shipments. Transfer here when user asks about deliveries, tracking numbers, or package locations.",
     )
 

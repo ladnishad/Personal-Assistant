@@ -156,6 +156,60 @@ async def update_conversation(
     )
 
 
+@router.get("/by-task/{task_id}", response_model=ConversationWithMessages)
+async def get_conversation_by_task(
+    task_id: str, current_user: User = Depends(get_current_active_user)
+):
+    """Get a conversation linked to a specific task."""
+    from beanie import PydanticObjectId
+
+    # Find conversation by task_id
+    conversation = await Conversation.find_one(
+        Conversation.task_id == PydanticObjectId(task_id),
+        Conversation.user_id == current_user.id,
+    )
+
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No conversation found for this task",
+        )
+
+    # Get all messages for this conversation
+    messages = (
+        await ConversationMessage.find(
+            ConversationMessage.conversation_id == conversation.id
+        )
+        .sort(ConversationMessage.timestamp)
+        .to_list()
+    )
+
+    message_responses = [
+        MessageResponse(
+            id=str(m.id),
+            conversation_id=str(m.conversation_id),
+            role=m.role,
+            content=m.content,
+            tool_calls=m.tool_calls,
+            tokens_used=m.tokens_used,
+            timestamp=m.timestamp,
+        )
+        for m in messages
+    ]
+
+    return ConversationWithMessages(
+        id=str(conversation.id),
+        user_id=str(conversation.user_id),
+        title=conversation.title,
+        message_count=conversation.message_count,
+        is_active=conversation.is_active,
+        task_id=str(conversation.task_id) if conversation.task_id else None,
+        created_at=conversation.created_at,
+        updated_at=conversation.updated_at,
+        messages=message_responses,
+    )
+
+
 @router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_conversation(
     conversation_id: str, current_user: User = Depends(get_current_active_user)

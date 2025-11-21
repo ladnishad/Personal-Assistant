@@ -13,7 +13,6 @@ class TaskViewModel: ObservableObject {
     @Published var tasks: [TaskItem] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
-    @Published var selectedStatus: TaskStatus? = .todo
 
     private let apiService = APIService.shared
 
@@ -22,8 +21,8 @@ class TaskViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            print("📋 Loading tasks with status: \(selectedStatus?.rawValue ?? "all")")
-            let response = try await apiService.getTasks(status: selectedStatus)
+            print("📋 Loading all tasks")
+            let response = try await apiService.getTasks(status: nil)
             print("✅ Loaded \(response.tasks.count) tasks")
             tasks = response.tasks
         } catch let error as APIError {
@@ -79,13 +78,6 @@ class TaskViewModel: ObservableObject {
             errorMessage = error.errorDescription
         } catch {
             errorMessage = "Failed to delete task"
-        }
-    }
-
-    func filterTasks(by status: TaskStatus?) {
-        selectedStatus = status
-        Task {
-            await loadTasks()
         }
     }
 }
