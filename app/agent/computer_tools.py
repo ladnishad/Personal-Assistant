@@ -2,9 +2,10 @@
 
 import base64
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from agents import function_tool
+from agents.tool import ToolOutputImage
 
 from app.computers.manager import ComputerManager
 
@@ -23,29 +24,39 @@ def get_computer_manager() -> ComputerManager:
 
 
 @function_tool
-async def take_screenshot() -> Dict[str, str]:
+async def take_screenshot() -> Union[ToolOutputImage, Dict[str, str]]:
     """Take a screenshot of the current desktop/browser state.
 
+    The screenshot is returned as an image that the vision model can analyze
+    to make decisions about where to click, what to type, etc.
+
     Returns:
-        Dictionary with:
-        - screenshot: Base64-encoded PNG image
-        - width: Display width in pixels
-        - height: Display height in pixels
-        - timestamp: When screenshot was taken
+        ToolOutputImage with the screenshot for vision model analysis,
+        or error dictionary if screenshot fails.
     """
     try:
         manager = get_computer_manager()
         result = await manager.screenshot()
-        logger.info("Screenshot taken successfully")
-        return result
+
+        if "error" in result:
+            logger.error(f"Error taking screenshot: {result['error']}")
+            return {"error": result["error"], "success": False}
+
+        # Extract base64 screenshot data
+        screenshot_b64 = result.get("screenshot", "")
+
+        if not screenshot_b64:
+            return {"error": "Screenshot data is empty", "success": False}
+
+        # Return as ToolOutputImage so vision model can analyze it
+        logger.info(f"Screenshot taken successfully ({result.get('width')}x{result.get('height')})")
+        return ToolOutputImage(
+            image_url=f"data:image/png;base64,{screenshot_b64}",
+            detail="high"  # High detail for accurate coordinate identification
+        )
     except Exception as e:
         logger.error(f"Error taking screenshot: {e}")
-        return {
-            "error": str(e),
-            "screenshot": "",
-            "width": 0,
-            "height": 0,
-        }
+        return {"error": str(e), "success": False}
 
 
 @function_tool
