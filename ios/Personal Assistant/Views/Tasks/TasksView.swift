@@ -14,11 +14,6 @@ struct TasksView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                filterPicker
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 12)
-
                 if viewModel.isLoading && viewModel.tasks.isEmpty {
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -49,18 +44,6 @@ struct TasksView: View {
                 await viewModel.loadTasks()
             }
         }
-    }
-
-    private var filterPicker: some View {
-        Picker("Status", selection: Binding(
-            get: { viewModel.selectedStatus ?? .todo },
-            set: { viewModel.filterTasks(by: $0) }
-        )) {
-            Text("To Do").tag(TaskStatus.todo)
-            Text("In Progress").tag(TaskStatus.inProgress)
-            Text("Done").tag(TaskStatus.done)
-        }
-        .pickerStyle(.segmented)
     }
 
     private var taskList: some View {

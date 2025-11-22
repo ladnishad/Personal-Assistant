@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
     redis_enabled: bool = Field(default=False, alias="REDIS_ENABLED")
+    # Email content cache TTL (in seconds) - short-lived for privacy
+    email_content_cache_ttl: int = Field(
+        default=1800, alias="EMAIL_CONTENT_CACHE_TTL"
+    )  # 30 minutes default
 
     # Google OAuth
     google_client_id: str = Field(default="", alias="GOOGLE_CLIENT_ID")
@@ -68,7 +72,7 @@ class Settings(BaseSettings):
 
     # OpenAI
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
-    openai_model: str = Field(default="gpt-5-nano", alias="OPENAI_MODEL")
+    openai_model: str = Field(default="gpt-5.1", alias="OPENAI_MODEL")
     openai_embedding_model: str = Field(
         default="text-embedding-3-small", alias="OPENAI_EMBEDDING_MODEL"
     )

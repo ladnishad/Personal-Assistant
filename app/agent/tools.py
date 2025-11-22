@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 # Store user_id in context for tool functions
 # This will be injected via agent context
 _current_user_id: PydanticObjectId = None
+_current_citations: List[Dict[str, Any]] = []
 
 
 def set_current_user_id(user_id: PydanticObjectId):
@@ -51,6 +52,18 @@ def get_current_user_id() -> PydanticObjectId:
     if _current_user_id is None:
         raise RuntimeError("User ID not set in execution context")
     return _current_user_id
+
+
+def set_current_citations(citations: List[Dict[str, Any]]):
+    """Set the current citations for tool execution context."""
+    global _current_citations
+    _current_citations = citations
+
+
+def get_current_citations() -> List[Dict[str, Any]]:
+    """Get the current citations from execution context."""
+    global _current_citations
+    return _current_citations
 
 
 @function_tool
@@ -130,7 +143,7 @@ async def get_tasks(status: str = None, limit: int = 10) -> List[Dict[str, Any]]
     - Show the user their current tasks
 
     Args:
-        status: Filter by task status - "todo", "in_progress", "done", or "cancelled" (optional)
+        status: Filter by task status - "todo" or "done" (optional)
         limit: Maximum number of results (default: 10)
 
     Returns:
@@ -189,6 +202,9 @@ async def update_task_content(task_id: str, content: str) -> Dict[str, Any]:
     """
     try:
         user_id = get_current_user_id()
+
+        # Store the raw content for potential post-processing with citations
+        # Citations are extracted after agent completion, so we'll process them in service.py
         task_data = TaskUpdate(content=content)
         task = await TaskService.update_task(task_id, user_id, task_data)
 
@@ -199,6 +215,7 @@ async def update_task_content(task_id: str, content: str) -> Dict[str, Any]:
             "title": task.title,
             "content_updated": True,
             "content_length": len(content),
+            "raw_content": content,  # Include raw content for citation processing
         }
     except Exception as e:
         logger.error(f"Error updating task content: {e}")

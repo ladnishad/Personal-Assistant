@@ -42,6 +42,7 @@ struct AgentChatRequest: Codable {
     let context: [String: String]?
     let useMemory: Bool
     let conversationId: String?
+    let taskId: String?
     let conversationHistory: [ConversationHistoryMessage]?
     let streamScreenshots: Bool
 
@@ -49,6 +50,7 @@ struct AgentChatRequest: Codable {
         case message, context
         case useMemory = "use_memory"
         case conversationId = "conversation_id"
+        case taskId = "task_id"
         case conversationHistory = "conversation_history"
         case streamScreenshots = "stream_screenshots"
     }
@@ -191,6 +193,77 @@ struct AnyCodable: Codable {
             try container.encodeNil()
         }
     }
+}
+
+// MARK: - Streaming Event Models
+
+enum StreamEvent {
+    case agentStatus(status: String, message: String?)
+    case toolCall(toolName: String, callId: String, args: [String: Any])
+    case toolResult(toolName: String, callId: String, result: String?)
+    case messageDelta(delta: String)
+    case messageComplete(message: String)
+    case done(conversationId: String, toolsUsed: [String], actionsTaken: [AgentChatResponse.ActionTaken], taskReference: AgentChatResponse.TaskReferenceResponse?)
+    case error(error: String)
+}
+
+struct AgentStatusEventData: Codable {
+    let status: String
+    let message: String?
+}
+
+struct ToolCallEventData: Codable {
+    let toolName: String
+    let toolArgs: [String: AnyCodable]
+    let callId: String
+
+    enum CodingKeys: String, CodingKey {
+        case toolName = "tool_name"
+        case toolArgs = "tool_args"
+        case callId = "call_id"
+    }
+}
+
+struct ToolResultEventData: Codable {
+    let toolName: String
+    let callId: String
+    let result: String?
+
+    enum CodingKeys: String, CodingKey {
+        case toolName = "tool_name"
+        case callId = "call_id"
+        case result
+    }
+}
+
+struct MessageDeltaEventData: Codable {
+    let delta: String
+}
+
+struct MessageCompleteEventData: Codable {
+    let message: String
+}
+
+struct DoneEventData: Codable {
+    let conversationId: String
+    let toolsUsed: [String]
+    let contextRetrieved: Int
+    let actionsTaken: [AgentChatResponse.ActionTaken]
+    let memoriesSaved: Int
+    let taskReference: AgentChatResponse.TaskReferenceResponse?
+
+    enum CodingKeys: String, CodingKey {
+        case conversationId = "conversation_id"
+        case toolsUsed = "tools_used"
+        case contextRetrieved = "context_retrieved"
+        case actionsTaken = "actions_taken"
+        case memoriesSaved = "memories_saved"
+        case taskReference = "task_reference"
+    }
+}
+
+struct ErrorEventData: Codable {
+    let error: String
 }
 
 // MARK: - Conversation Models

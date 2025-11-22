@@ -6,8 +6,10 @@ from typing import List, Optional
 
 from beanie import PydanticObjectId
 
+from app.emails.classifier import classify_email
 from app.emails.gmail_service import GmailService
 from app.emails.models import Email, EmailLabel
+from app.emails.summarizer import EmailSummarizer
 from app.integrations.models import Integration, IntegrationType
 
 logger = logging.getLogger(__name__)
@@ -52,13 +54,14 @@ class EmailService:
 
     @staticmethod
     async def _sync_gmail(integration: Integration) -> tuple[int, int, int]:
-        """Sync emails from Gmail."""
+        """Sync emails from Gmail and trigger summarization for new emails."""
         synced = 0
         new = 0
         updated = 0
+        new_emails = []  # Track new emails for summarization
 
         try:
-            # Fetch emails from Gmail
+            # Fetch emails from Gmail (metadata only, no bodies)
             emails_data, _ = await GmailService.fetch_emails(integration, max_results=10)
 
             for email_data in emails_data:
@@ -73,7 +76,7 @@ class EmailService:
                     await existing.save()
                     updated += 1
                 else:
-                    # Create new email
+                    # Create new email (no body content, privacy-safe)
                     email = Email(
                         user_id=integration.user_id,
                         integration_id=integration.id,
@@ -81,8 +84,31 @@ class EmailService:
                     )
                     await email.insert()
                     new += 1
+                    new_emails.append(email)
 
                 synced += 1
+
+            # Classify and summarize new emails (hybrid strategy)
+            for email in new_emails:
+                try:
+                    # Classify first
+                    if not email.email_category:
+                        classification = await classify_email(email)
+                        email.email_category = classification.category.value
+                        email.category_confidence = classification.confidence
+                        email.category_reasoning = classification.reasoning
+                        email.classified_at = datetime.utcnow()
+                        await email.save()
+
+                    # Eagerly summarize important emails
+                    if EmailSummarizer.should_summarize_eagerly(email):
+                        await EmailSummarizer.summarize_email(email, integration)
+                        logger.info(f"Eagerly summarized new email {email.id}")
+
+                except Exception as e:
+                    logger.error(f"Error processing new email {email.id}: {e}")
+                    # Continue with other emails even if one fails
+                    continue
 
             # Update integration sync state
             integration.last_email_sync = datetime.utcnow()
@@ -121,12 +147,14 @@ class EmailService:
         if labels:
             query["labels"] = {"$in": labels}
 
-        # Search in subject or body
+        # Search in subject, snippet, AI summary, and sender
         if search:
             query["$or"] = [
                 {"subject": {"$regex": search, "$options": "i"}},
-                {"body_text": {"$regex": search, "$options": "i"}},
+                {"snippet": {"$regex": search, "$options": "i"}},
+                {"ai_summary": {"$regex": search, "$options": "i"}},
                 {"from_email": {"$regex": search, "$options": "i"}},
+                {"from_name": {"$regex": search, "$options": "i"}},
             ]
 
         # Get emails

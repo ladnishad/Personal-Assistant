@@ -135,7 +135,7 @@ def _create_classifier_agent() -> Agent:
     return Agent(
         name="Email Classifier",
         instructions="You are an expert email classifier. Analyze emails and categorize them accurately based on their purpose and content.",
-        model=settings.openai_model,  # Use system-wide model (gpt-5-nano)
+        model="gpt-5-nano",  # Explicitly use nano for fast, cheap classification
         output_type=EmailClassification,  # Structured output via Pydantic
         model_settings=ModelSettings(
             # GPT-5 nano settings for fast, lightweight classification

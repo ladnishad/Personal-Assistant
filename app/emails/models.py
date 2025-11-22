@@ -58,10 +58,12 @@ class Email(Document):
     bcc: List[str] = Field(default_factory=list)
     subject: Optional[str] = None
 
-    # Content
-    body_text: Optional[str] = None
-    body_html: Optional[str] = None
-    snippet: Optional[str] = None
+    # Content - Privacy-conscious storage
+    # Full email bodies NOT stored for privacy (fetch on-demand from provider)
+    body_text: Optional[str] = None  # DEPRECATED: Fetch on-demand only
+    body_html: Optional[str] = None  # DEPRECATED: Fetch on-demand only
+    # Snippet IS stored: Short preview (~200 chars) needed for classification/extraction
+    snippet: Optional[str] = None  # Gmail's short preview, stored for quick access
 
     # Attachments
     has_attachments: bool = Field(default=False)
@@ -83,6 +85,17 @@ class Email(Document):
     # Entity extraction results (structured)
     extracted_entities: Optional[Dict] = None  # EmailEntity as dict
     entities_extracted_at: Optional[datetime] = None
+
+    # AI-generated insights (privacy-safe summaries)
+    ai_summary: Optional[str] = None  # 2-3 sentence summary
+    action_items: List[str] = Field(default_factory=list)  # Extracted action items
+    key_people: List[str] = Field(default_factory=list)  # Important people mentioned
+    key_dates: List[datetime] = Field(default_factory=list)  # Important dates
+    priority_score: Optional[float] = None  # AI-determined priority (0-1)
+    requires_response: Optional[bool] = None  # Does this need a reply?
+    sentiment: Optional[str] = None  # positive/neutral/negative/urgent
+    summarized_at: Optional[datetime] = None
+    summary_model: Optional[str] = None  # Track which model generated it
 
     # Email relationships
     related_email_ids: List[PydanticObjectId] = Field(default_factory=list)

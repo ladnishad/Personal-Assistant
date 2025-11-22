@@ -12,29 +12,23 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            EmailInboxView()
-                .tabItem {
-                    Label("Inbox", systemImage: "envelope")
-                }
-                .tag(0)
-
             TasksView()
                 .tabItem {
                     Label("Tasks", systemImage: "checklist")
                 }
-                .tag(1)
+                .tag(0)
 
             ConversationsListView()
                 .tabItem {
-                    Label("Assistant", systemImage: "brain.head.profile")
+                    Label("Chat", systemImage: "brain.head.profile")
                 }
-                .tag(2)
+                .tag(1)
 
             SettingsView()
                 .tabItem {
                     Label("Settings", systemImage: "gear")
                 }
-                .tag(3)
+                .tag(2)
         }
         .tint(.blue)
     }

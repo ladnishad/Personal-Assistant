@@ -15,23 +15,25 @@ class ChatViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var conversationId: String?
+    @Published var agentStatus: String?
+    @Published var activeTool: String?
+    @Published var streamingMessage: String = ""
+    @Published var taskWasUpdated = false
 
     private let apiService = APIService.shared
     private let taskId: String?
+    private let task: TaskItem?
 
-    init(conversationId: String? = nil, taskId: String? = nil) {
+    init(conversationId: String? = nil, taskId: String? = nil, task: TaskItem? = nil) {
         self.conversationId = conversationId
         self.taskId = taskId
+        self.task = task
 
-        if conversationId == nil {
-            // Add welcome message for new conversations
-            let welcomeMessage = taskId != nil ?
-                "Hi! Let's work on this task together. How can I help you?" :
-                "Hi! I'm your personal AI assistant. I can help you manage your emails, tasks, and more. How can I help you today?"
-
+        if conversationId == nil && taskId == nil {
+            // Add welcome message for new conversations (only for main chat, not task chats)
             messages.append(ChatMessage(
                 role: .assistant,
-                content: welcomeMessage
+                content: "Hi! I'm your personal AI assistant. I can help you manage your emails, tasks, and more. How can I help you today?"
             ))
         }
     }
@@ -61,44 +63,137 @@ class ChatViewModel: ObservableObject {
         isLoading = false
     }
 
+    func loadConversationForTask() async {
+        guard let taskId = taskId else { return }
+
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            let conversation = try await apiService.getConversationByTask(taskId: taskId)
+            conversationId = conversation.id
+
+            // Convert API messages to ChatMessage objects
+            messages = conversation.messages.map { msg in
+                ChatMessage(
+                    role: msg.role == "user" ? .user : .assistant,
+                    content: msg.content,
+                    timestamp: msg.timestamp
+                )
+            }
+
+            // If no messages, add a welcome message
+            if messages.isEmpty {
+                messages.append(ChatMessage(
+                    role: .assistant,
+                    content: "Hi! Let's work on this task together. How can I help you?"
+                ))
+            }
+        } catch {
+            // No conversation found for this task yet - that's okay
+            // Add welcome message for new task conversations
+            messages.append(ChatMessage(
+                role: .assistant,
+                content: "Hi! Let's work on this task together. How can I help you?"
+            ))
+        }
+
+        isLoading = false
+    }
+
     func sendMessage() async {
         guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         let userMessage = ChatMessage(role: .user, content: inputText)
         messages.append(userMessage)
 
-        let messageToSend = inputText
+        // Build message with task context if available
+        var messageToSend = inputText
+        if let task = task {
+            let taskContext = """
+            [Task Context]
+            Task ID: \(task.id)
+            Title: \(task.title)
+            \(task.description != nil ? "Description: \(task.description!)" : "")
+            Status: \(task.status.rawValue)
+            Priority: \(task.priority.rawValue)
+
+            User message: \(inputText)
+            """
+            messageToSend = taskContext
+        }
+
         inputText = ""
         isLoading = true
+        streamingMessage = ""
+        agentStatus = "Thinking..."
+        activeTool = nil
+        taskWasUpdated = false
 
         do {
-            // Build conversation history (last 15 messages, excluding the one we just added)
-            let historyMessages: [ConversationHistoryMessage]
-            if messages.count > 1 {
-                // Get last 15 messages before the current one (or all if less than 16)
-                let startIndex = max(0, messages.count - 16)
-                let endIndex = messages.count - 1 // Exclude the message we just added
-                historyMessages = messages[startIndex..<endIndex].map { msg in
-                    ConversationHistoryMessage(
-                        role: msg.role.rawValue,
-                        content: msg.content
-                    )
-                }
-            } else {
-                historyMessages = []
-            }
-
-            let response = try await apiService.sendChatMessage(
+            print("🚀 Starting streaming...")
+            let eventStream = apiService.sendChatMessageStreaming(
                 message: messageToSend,
                 useMemory: true,
                 conversationId: conversationId,
-                conversationHistory: historyMessages.isEmpty ? nil : historyMessages
+                taskId: taskId
             )
 
-            // Store conversation ID
-            conversationId = response.conversationId
+            var finalConversationId: String?
+            var toolsUsed: [String] = []
+            var actionsTaken: [AgentChatResponse.ActionTaken] = []
+            var taskReference: AgentChatResponse.TaskReferenceResponse?
 
-            let taskRef: ChatMessage.TaskReference? = if let taskRefResp = response.taskReference {
+            for try await event in eventStream {
+                print("📨 Received event: \(event)")
+                switch event {
+                case .agentStatus(let status, let message):
+                    print("🔔 Status: \(message ?? status)")
+                    agentStatus = message ?? status.capitalized
+
+                case .toolCall(let toolName, _, _):
+                    let friendlyName = formatToolName(toolName)
+                    activeTool = friendlyName
+                    agentStatus = "Using \(friendlyName)..."
+
+                    // Detect if task is being updated
+                    if toolName == "update_task_content" {
+                        agentStatus = "Updating task..."
+                    }
+
+                case .toolResult(let toolName, _, _):
+                    activeTool = nil
+                    agentStatus = "Processing results..."
+
+                    // Mark that task was updated
+                    if toolName == "update_task_content" {
+                        taskWasUpdated = true
+                    }
+
+                case .messageDelta(let delta):
+                    streamingMessage += delta
+
+                case .messageComplete(let message):
+                    streamingMessage = message
+                    agentStatus = nil
+
+                case .done(let convId, let tools, let actions, let taskRef):
+                    finalConversationId = convId
+                    toolsUsed = tools
+                    actionsTaken = actions
+                    taskReference = taskRef
+
+                case .error(let error):
+                    throw APIError.serverError(error)
+                }
+            }
+
+            // Store conversation ID
+            if let convId = finalConversationId {
+                conversationId = convId
+            }
+
+            let taskRef: ChatMessage.TaskReference? = if let taskRefResp = taskReference {
                 ChatMessage.TaskReference(
                     taskId: taskRefResp.taskId,
                     taskTitle: taskRefResp.taskTitle,
@@ -110,12 +205,18 @@ class ChatViewModel: ObservableObject {
 
             let assistantMessage = ChatMessage(
                 role: .assistant,
-                content: response.message,
-                toolsUsed: response.toolsUsed.isEmpty ? nil : response.toolsUsed,
-                actionsTaken: response.actionsTaken.isEmpty ? nil : response.actionsTaken.map { $0.tool },
+                content: streamingMessage,
+                toolsUsed: toolsUsed.isEmpty ? nil : toolsUsed,
+                actionsTaken: actionsTaken.isEmpty ? nil : actionsTaken.map { $0.tool },
                 taskReference: taskRef
             )
             messages.append(assistantMessage)
+
+            // Clear streaming state
+            streamingMessage = ""
+            agentStatus = nil
+            activeTool = nil
+
         } catch let error as APIError {
             errorMessage = error.errorDescription
             // Add error message to chat
@@ -124,11 +225,35 @@ class ChatViewModel: ObservableObject {
                 content: "I'm sorry, I encountered an error: \(error.errorDescription ?? "Unknown error")"
             )
             messages.append(errorMsg)
+
+            // Clear streaming state
+            streamingMessage = ""
+            agentStatus = nil
+            activeTool = nil
         } catch {
             errorMessage = "Failed to send message"
+
+            // Clear streaming state
+            streamingMessage = ""
+            agentStatus = nil
+            activeTool = nil
         }
 
         isLoading = false
+    }
+
+    private func formatToolName(_ tool: String) -> String {
+        switch tool {
+        case "create_task": return "Creating task"
+        case "update_task_content": return "Updating task"
+        case "get_tasks": return "Retrieving tasks"
+        case "search_memory": return "Searching memory"
+        case "save_memory": return "Saving memory"
+        case "search_emails": return "Searching emails"
+        case "get_recent_emails": return "Getting emails"
+        case "web_search": return "Web search"
+        default: return tool.replacingOccurrences(of: "_", with: " ").capitalized
+        }
     }
 
     func clearChat() {

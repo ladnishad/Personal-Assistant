@@ -75,12 +75,36 @@ class GmailService:
             raise
 
     @staticmethod
-    def _parse_gmail_message(message: dict) -> Optional[dict]:
-        """Parse Gmail message into email data."""
-        try:
-            headers = {h["name"]: h["value"] for h in message["payload"]["headers"]}
+    async def fetch_email_content(
+        integration: Integration, message_id: str
+    ) -> Optional[dict]:
+        """Fetch full email content on-demand from Gmail.
 
-            # Extract body
+        This is called only when user explicitly requests to read an email,
+        ensuring we don't store sensitive email bodies in the database.
+
+        Args:
+            integration: User's Gmail integration
+            message_id: Gmail message ID
+
+        Returns:
+            Dictionary with body_text, body_html, and snippet
+        """
+        try:
+            # Ensure token is valid
+            integration = await GoogleService.check_and_refresh_token(integration)
+            credentials = GoogleService.get_credentials(integration)
+            service = build("gmail", "v1", credentials=credentials)
+
+            # Fetch full message
+            message = (
+                service.users()
+                .messages()
+                .get(userId="me", id=message_id, format="full")
+                .execute()
+            )
+
+            # Extract body content
             body_text = ""
             body_html = ""
 
@@ -98,6 +122,40 @@ class GmailService:
                 body_text = base64.urlsafe_b64decode(
                     message["payload"]["body"]["data"]
                 ).decode("utf-8")
+
+            return {
+                "body_text": body_text,
+                "body_html": body_html,
+                "snippet": message.get("snippet", ""),
+            }
+
+        except Exception as e:
+            logger.error(f"Error fetching email content for {message_id}: {e}")
+            return None
+
+    @staticmethod
+    def _parse_gmail_message(message: dict) -> Optional[dict]:
+        """Parse Gmail message into email metadata ONLY.
+
+        For privacy and storage efficiency, we don't extract email bodies.
+        Bodies are fetched on-demand via fetch_email_content().
+        """
+        try:
+            headers = {h["name"]: h["value"] for h in message["payload"]["headers"]}
+
+            # Parse From header (format: "Name <email@domain.com>" or just "email@domain.com")
+            from_header = headers.get("From", "")
+            from_email = from_header
+            from_name = None
+
+            if "<" in from_header and ">" in from_header:
+                # Extract name and email from "Name <email@domain.com>"
+                parts = from_header.split("<")
+                from_name = parts[0].strip().strip('"')  # Remove quotes if present
+                from_email = parts[1].strip(">").strip()
+            else:
+                # Just email address, no name
+                from_email = from_header.strip()
 
             # Parse date
             date_str = headers.get("Date")
@@ -136,12 +194,13 @@ class GmailService:
             return {
                 "message_id": message["id"],
                 "thread_id": message.get("threadId"),
-                "from_email": headers.get("From", ""),
+                "from_email": from_email,
+                "from_name": from_name,
                 "to": [headers.get("To", "")],
                 "cc": headers.get("Cc", "").split(",") if headers.get("Cc") else [],
                 "subject": headers.get("Subject"),
-                "body_text": body_text,
-                "body_html": body_html,
+                # body_text, body_html NOT stored - fetch on-demand for privacy
+                # snippet IS stored - short preview (~200 chars) for classification
                 "snippet": message.get("snippet"),
                 "labels": labels,
                 "is_read": "UNREAD" not in message.get("labelIds", []),

@@ -54,6 +54,18 @@ struct SettingsView: View {
                     }
                 }
 
+                // Your Data Section
+                Section("Your Data") {
+                    NavigationLink {
+                        EmailInboxView()
+                    } label: {
+                        HStack {
+                            Label("Email Inbox", systemImage: "envelope.fill")
+                            Spacer()
+                        }
+                    }
+                }
+
                 // Integrations Section
                 Section("Integrations") {
                     NavigationLink {
