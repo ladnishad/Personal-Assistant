@@ -17,10 +17,11 @@ async def chat_with_agent(
     """Chat with the AI agent orchestrator using OpenAI Agents SDK.
 
     The agent automatically:
-    - Executes tools as needed (tasks, emails, memory, web search)
+    - Executes tools as needed (tasks, emails, memory, web search, computer control)
     - Manages conversation history via Sessions (stored in MongoDB)
     - Applies guardrails for validation
     - Traces execution for debugging
+    - Optionally streams screenshots from computer control operations (if stream_screenshots=true)
     """
     # Note: conversation_history in request is kept for backward compatibility
     # but is now ignored. The Session handles history automatically from MongoDB.
@@ -30,6 +31,7 @@ async def chat_with_agent(
         use_memory=request.use_memory,
         conversation_id=request.conversation_id,
         conversation_history=None,  # Not used with Agents SDK Session
+        stream_screenshots=request.stream_screenshots,
     )
 
     return AgentChatResponse(**result)

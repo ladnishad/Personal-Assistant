@@ -43,18 +43,53 @@ struct AgentChatRequest: Codable {
     let useMemory: Bool
     let conversationId: String?
     let conversationHistory: [ConversationHistoryMessage]?
+    let streamScreenshots: Bool
 
     enum CodingKeys: String, CodingKey {
         case message, context
         case useMemory = "use_memory"
         case conversationId = "conversation_id"
         case conversationHistory = "conversation_history"
+        case streamScreenshots = "stream_screenshots"
+    }
+
+    init(message: String, context: [String: String]? = nil, useMemory: Bool = true, conversationId: String? = nil, conversationHistory: [ConversationHistoryMessage]? = nil, streamScreenshots: Bool = false) {
+        self.message = message
+        self.context = context
+        self.useMemory = useMemory
+        self.conversationId = conversationId
+        self.conversationHistory = conversationHistory
+        self.streamScreenshots = streamScreenshots
     }
 }
 
 struct ConversationHistoryMessage: Codable {
     let role: String
     let content: String
+}
+
+struct ScreenshotCapture: Codable, Identifiable {
+    let id: UUID
+    let timestamp: String
+    let screenshot: String  // Base64-encoded image
+    let width: Int
+    let height: Int
+    let actionContext: String?
+
+    enum CodingKeys: String, CodingKey {
+        case timestamp, screenshot, width, height
+        case actionContext = "action_context"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = UUID()
+        self.timestamp = try container.decode(String.self, forKey: .timestamp)
+        self.screenshot = try container.decode(String.self, forKey: .screenshot)
+        self.width = try container.decode(Int.self, forKey: .width)
+        self.height = try container.decode(Int.self, forKey: .height)
+        self.actionContext = try? container.decode(String.self, forKey: .actionContext)
+    }
 }
 
 struct AgentChatResponse: Codable {
@@ -65,6 +100,7 @@ struct AgentChatResponse: Codable {
     let actionsTaken: [ActionTaken]
     let memoriesSaved: Int
     let taskReference: TaskReferenceResponse?
+    let screenshots: [ScreenshotCapture]
 
     enum CodingKeys: String, CodingKey {
         case message
@@ -74,6 +110,7 @@ struct AgentChatResponse: Codable {
         case actionsTaken = "actions_taken"
         case memoriesSaved = "memories_saved"
         case taskReference = "task_reference"
+        case screenshots
     }
 
     struct TaskReferenceResponse: Codable {

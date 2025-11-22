@@ -125,6 +125,127 @@ response = requests.post(
 )
 ```
 
+## Screenshot Streaming
+
+The Computer Control Agent supports **screenshot streaming**, allowing you to see what the agent is doing in real-time through periodic screenshots during execution.
+
+### Enabling Screenshot Streaming
+
+**API Request:**
+
+```python
+response = requests.post(
+    "http://localhost:8000/api/v1/agent/chat",
+    headers={"Authorization": f"Bearer {token}"},
+    json={
+        "message": "Book a table at OpenTable for 2 people at 7pm",
+        "stream_screenshots": True  # Enable screenshot streaming
+    }
+)
+
+# Response includes screenshots array
+screenshots = response.json()["screenshots"]
+for screenshot in screenshots:
+    print(f"Action: {screenshot['action_context']}")
+    print(f"Timestamp: {screenshot['timestamp']}")
+    print(f"Size: {screenshot['width']}x{screenshot['height']}")
+    # screenshot['screenshot'] contains base64-encoded PNG
+```
+
+**iOS Integration:**
+
+```swift
+let request = AgentChatRequest(
+    message: "Search for wireless headphones on Amazon",
+    streamScreenshots: true  // Enable streaming
+)
+
+let response = try await apiService.chat(request: request)
+
+// Display screenshots in UI
+if !response.screenshots.isEmpty {
+    ScreenshotStreamView(screenshots: response.screenshots)
+}
+```
+
+### How It Works
+
+1. When `stream_screenshots: true`, the agent captures a screenshot after each significant action
+2. Screenshots are automatically taken during:
+   - Page navigation
+   - Click operations
+   - Form submissions
+   - Search completions
+3. Each screenshot includes:
+   - **Timestamp**: When the screenshot was taken
+   - **Image**: Base64-encoded PNG
+   - **Dimensions**: Width and height in pixels
+   - **Action Context**: What the agent was doing (e.g., "clicking search button")
+
+### Use Cases
+
+**Monitoring Progress:**
+```
+User: "Find the best deal on flights to NYC"
+→ Screenshot 1: Google opened
+→ Screenshot 2: Flight search site loaded
+→ Screenshot 3: Search results showing
+→ Screenshot 4: Sorted by price
+```
+
+**Debugging Issues:**
+If the agent encounters problems, screenshots help identify:
+- Wrong page loaded
+- Element not found
+- Unexpected popups
+- Auth requirements
+
+**User Transparency:**
+Users can see exactly what the agent is accessing and doing, building trust and providing visibility.
+
+### iOS UI Component
+
+A ready-to-use SwiftUI component is provided in `ios/Personal Assistant/Views/Components/ScreenshotStreamView.swift`:
+
+```swift
+// In your chat message view
+if message.role == .assistant,
+   let screenshots = message.screenshots,
+   !screenshots.isEmpty {
+    ScreenshotStreamView(screenshots: screenshots)
+}
+```
+
+**Features:**
+- ✅ Collapsible preview (show/hide)
+- ✅ Navigate between multiple screenshots
+- ✅ Display action context and timestamp
+- ✅ Responsive image rendering
+- ✅ Screenshot counter
+
+See `ios/SCREENSHOT_STREAM_INTEGRATION.md` for complete integration guide.
+
+### Performance Considerations
+
+- Screenshots are ~200KB-500KB each (base64-encoded)
+- Only enabled when explicitly requested via `stream_screenshots: true`
+- Automatic cleanup after response is sent
+- Consider lazy loading for UI with many screenshots
+
+### Privacy & Security
+
+⚠️ **Important:** Screenshots may contain sensitive information:
+- Personal data visible on screen
+- Account information
+- Search history
+- Form data
+
+**Best Practices:**
+- Only enable when needed
+- Clear screenshot data after viewing
+- Respect user privacy preferences
+- Implement secure storage if persisting locally
+
 ## Available Actions
 
 The Computer Control Agent can perform these actions:

@@ -8,6 +8,12 @@ from agents import Agent, Runner
 from beanie import PydanticObjectId
 
 from app.agent.computer_agent import create_computer_control_agent
+from app.agent.computer_tools import (
+    enable_screenshot_streaming,
+    disable_screenshot_streaming,
+    get_screenshot_captures,
+    clear_screenshot_captures,
+)
 from app.agent.guardrails import OUTPUT_GUARDRAILS
 from app.agent.package_agent import create_package_tracking_agent
 from app.agent.package_tools import set_package_user_id
@@ -284,6 +290,7 @@ You already know this basic information about the user, so don't ask for it."""
         use_memory: bool = True,
         conversation_id: Optional[str] = None,
         conversation_history: Optional[list] = None,
+        stream_screenshots: bool = False,
     ) -> Dict[str, Any]:
         """Process user message with agent orchestrator using Agents SDK.
 
@@ -293,6 +300,7 @@ You already know this basic information about the user, so don't ask for it."""
             use_memory: Whether to use long-term memory
             conversation_id: Existing conversation ID or None for new
             conversation_history: Optional conversation history (for compatibility)
+            stream_screenshots: Whether to stream screenshots from computer control agent
 
         Returns:
             Dictionary with response message, conversation_id, and metadata
@@ -305,6 +313,13 @@ You already know this basic information about the user, so don't ask for it."""
 
             # Set user context for tools
             set_current_user_id(user_id)
+
+            # Enable screenshot streaming if requested
+            if stream_screenshots:
+                enable_screenshot_streaming()
+                logger.info("Screenshot streaming enabled for this request")
+            else:
+                disable_screenshot_streaming()
 
             # Extract any @remember commands from message
             remember_commands = extract_remember_commands(message)
@@ -373,6 +388,14 @@ You already know this basic information about the user, so don't ask for it."""
 
             # Get final message
             final_message = result.final_output
+
+            # Collect screenshots if streaming was enabled
+            screenshots = []
+            if stream_screenshots:
+                screenshots = get_screenshot_captures()
+                logger.info(f"Collected {len(screenshots)} screenshots from execution")
+                # Clear captures for next request
+                clear_screenshot_captures()
 
             # Prepend @remember confirmations to response if any
             if remember_responses:
@@ -473,6 +496,7 @@ You already know this basic information about the user, so don't ask for it."""
                 "memories_saved": len(remember_commands)
                 + sum(1 for a in actions_taken if a["tool"] == "save_memory"),
                 "task_reference": task_reference,
+                "screenshots": screenshots,
             }
 
         except Exception as e:
@@ -487,4 +511,5 @@ You already know this basic information about the user, so don't ask for it."""
                 "actions_taken": [],
                 "memories_saved": 0,
                 "task_reference": None,
+                "screenshots": [],
             }
