@@ -27,6 +27,11 @@ email-validator>=2.1.0
 # Package Tracking
 aftership-tracking-sdk>=1.0.0
 
+# Computer Control / Browser Automation
+playwright>=1.40.0
+docker>=7.0.0
+pillow>=10.1.0
+
 # Task Scheduling
 apscheduler>=3.10.4
 

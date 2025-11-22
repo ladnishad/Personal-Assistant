@@ -1,0 +1,85 @@
+# Dockerfile for Computer Use VM Environment
+# Ubuntu desktop with VNC server for AI agent control
+
+FROM ubuntu:22.04
+
+# Prevent interactive prompts during installation
+ENV DEBIAN_FRONTEND=noninteractive
+ENV DISPLAY=:99
+ENV RESOLUTION=1024x768
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    # X server and VNC
+    xvfb \
+    x11vnc \
+    xdotool \
+    imagemagick \
+    # Desktop environment (lightweight)
+    xfce4 \
+    xfce4-terminal \
+    # Web browser
+    firefox \
+    # Utilities
+    wget \
+    curl \
+    git \
+    nano \
+    # Python and tools
+    python3 \
+    python3-pip \
+    # NoVNC for web-based VNC access
+    novnc \
+    # Network tools
+    net-tools \
+    iputils-ping \
+    # Cleanup
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app user
+RUN useradd -m -s /bin/bash lifeos && \
+    echo "lifeos:lifeos123" | chpasswd && \
+    mkdir -p /home/lifeos/.vnc && \
+    chown -R lifeos:lifeos /home/lifeos
+
+# Switch to app user
+USER lifeos
+WORKDIR /home/lifeos
+
+# Set up VNC password
+RUN mkdir -p ~/.vnc && \
+    x11vnc -storepasswd lifeos123 ~/.vnc/passwd
+
+# Create startup script
+RUN echo '#!/bin/bash\n\
+# Start Xvfb (virtual framebuffer X server)\n\
+Xvfb ${DISPLAY} -screen 0 ${RESOLUTION}x24 &\n\
+sleep 2\n\
+\n\
+# Start XFCE desktop\n\
+startxfce4 &\n\
+sleep 3\n\
+\n\
+# Start VNC server\n\
+x11vnc -display ${DISPLAY} -forever -shared -rfbauth ~/.vnc/passwd -rfbport 5900 &\n\
+sleep 2\n\
+\n\
+# Start noVNC for web access\n\
+/usr/share/novnc/utils/novnc_proxy --vnc localhost:5900 --listen 6080 &\n\
+\n\
+# Keep container running\n\
+tail -f /dev/null\n\
+' > ~/start.sh && chmod +x ~/start.sh
+
+# Expose VNC ports
+# 5900: VNC server
+# 6080: noVNC web interface
+EXPOSE 5900 6080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD pgrep -x Xvfb > /dev/null || exit 1
+
+# Start all services
+CMD ["bash", "/home/lifeos/start.sh"]

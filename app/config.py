@@ -100,6 +100,12 @@ class Settings(BaseSettings):
     # Package Tracking / AfterShip API
     aftership_api_key: str = Field(default="", alias="AFTERSHIP_API_KEY")
 
+    # Computer Control
+    computer_environment: str = Field(default="playwright", alias="COMPUTER_ENVIRONMENT")
+    computer_display_width: int = Field(default=1024, alias="COMPUTER_DISPLAY_WIDTH")
+    computer_display_height: int = Field(default=768, alias="COMPUTER_DISPLAY_HEIGHT")
+    computer_vnc_password: str = Field(default="lifeos123", alias="COMPUTER_VNC_PASSWORD")
+
     # CORS
     cors_origins: Union[List[str], str] = Field(
         default="http://localhost:3000,http://localhost:5173", alias="CORS_ORIGINS"

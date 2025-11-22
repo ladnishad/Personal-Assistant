@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from agents import Agent, Runner
 from beanie import PydanticObjectId
 
+from app.agent.computer_agent import create_computer_control_agent
 from app.agent.guardrails import OUTPUT_GUARDRAILS
 from app.agent.package_agent import create_package_tracking_agent
 from app.agent.package_tools import set_package_user_id
@@ -193,7 +194,29 @@ When users ask about packages, deliveries, or tracking:
 - For detailed package tracking, transfer to the Package Tracking Specialist agent
 - The specialist can track shipments, provide delivery updates, and analyze email context
 
-You have access to tools for emails, tasks, web search, MEMORY, and package tracking. Use them proactively to provide personalized, contextual assistance."""
+**COMPUTER CONTROL & AUTOMATION:**
+When users ask you to perform tasks requiring browser or desktop interaction:
+- Book reservations (restaurants, hotels, events)
+- Order items online (e-commerce)
+- Fill out web forms
+- Search websites and gather information
+- Perform any task requiring visual interface interaction
+
+Transfer to the Computer Control Specialist agent for these tasks. The specialist can:
+- Navigate websites and web applications
+- Click buttons, fill forms, type text
+- Take screenshots to understand visual state
+- Execute multi-step workflows autonomously
+- Handle complex web-based tasks
+
+Examples when to transfer to Computer Control:
+→ "Book a table at Resy for tomorrow at 7pm"
+→ "Search Amazon for wireless headphones under $100"
+→ "Fill out this form on the website"
+→ "Order pizza from Domino's"
+→ "Find available hotel rooms in Austin for next week"
+
+You have access to tools for emails, tasks, web search, MEMORY, package tracking, and computer control. Use them proactively to provide personalized, contextual assistance."""
 
     @staticmethod
     async def _ensure_user_profile_memory(user: User) -> None:
@@ -319,8 +342,9 @@ You already know this basic information about the user, so don't ask for it."""
             # This must be set before creating agents so tools can access user_id
             set_package_user_id(user_id)
 
-            # Create package tracking agent (will use contextvar user_id in tools)
+            # Create specialized agents (will use contextvar user_id in tools)
             package_agent = create_package_tracking_agent()
+            computer_agent = create_computer_control_agent()
 
             # Create agent with guardrails and handoffs
             agent = Agent(
@@ -329,7 +353,7 @@ You already know this basic information about the user, so don't ask for it."""
                 tools=AGENT_TOOLS,
                 model=settings.openai_model,
                 output_guardrails=OUTPUT_GUARDRAILS,
-                handoffs=[package_agent],  # Add package tracking agent as handoff
+                handoffs=[package_agent, computer_agent],  # Add specialized agents
             )
 
             # Create session for conversation history
