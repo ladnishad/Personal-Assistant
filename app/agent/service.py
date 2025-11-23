@@ -860,14 +860,14 @@ You already know this basic information about the user, so don't ask for it."""
                                 screenshots = get_screenshot_captures()
                                 for screenshot in screenshots:
                                     screenshot_event = {
-                                        "screenshot": screenshot.screenshot,
-                                        "width": screenshot.width,
-                                        "height": screenshot.height,
-                                        "timestamp": screenshot.timestamp,
-                                        "action_context": screenshot.action_context,
+                                        "screenshot": screenshot["screenshot"],
+                                        "width": screenshot["width"],
+                                        "height": screenshot["height"],
+                                        "timestamp": screenshot["timestamp"],
+                                        "action_context": screenshot.get("action_context"),
                                     }
                                     yield f"event: screenshot_capture\ndata: {json.dumps(screenshot_event)}\n\n"
-                                    logger.info(f"📸 Emitted screenshot: {screenshot.action_context}")
+                                    logger.info(f"📸 Emitted screenshot: {screenshot.get('action_context', 'unknown')}")
                                 # Clear screenshots after emitting to avoid duplicates
                                 clear_screenshot_captures()
 
