@@ -5,7 +5,7 @@ import base64
 import io
 import logging
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import docker
 from PIL import Image
@@ -32,11 +32,11 @@ class DockerComputer(Computer):
         super().__init__(display_width, display_height)
         self.client: Optional[docker.DockerClient] = None
         self.container: Optional[docker.models.containers.Container] = None
-        self.container_name = "lifeos-computer-use"
+        self.container_name = "lifeos-computer"  # Match docker-compose container name
         self.vnc_password = "lifeos123"  # Default VNC password
         self.display_number = "99"  # Virtual display number
 
-    async def initialize(self) -> Dict[str, any]:
+    async def initialize(self) -> Dict[str, Any]:
         """Initialize Docker container with Ubuntu desktop.
 
         Returns:
@@ -46,16 +46,44 @@ class DockerComputer(Computer):
             # Connect to Docker
             self.client = docker.from_env()
 
-            # Check if container already exists
+            # Check if container already exists (container reuse for faster startup)
+            container_reused = False
             try:
                 self.container = self.client.containers.get(self.container_name)
-                if self.container.status != "running":
+
+                # Container exists - check its status
+                if self.container.status == "running":
+                    logger.info(f"Reusing running container: {self.container_name}")
+                    container_reused = True
+                elif self.container.status == "exited":
+                    logger.info(f"Restarting stopped container: {self.container_name}")
                     self.container.start()
-                    # Wait for container to be ready
-                    await asyncio.sleep(3)
-                logger.info(f"Using existing container: {self.container_name}")
+                    # Wait longer for services to restart
+                    await asyncio.sleep(5)
+
+                    # Verify container is functional after restart
+                    try:
+                        exit_code, output = await self._exec_command("echo 'health_check'")
+                        if exit_code != 0:
+                            raise RuntimeError("Container not responding after restart")
+                        logger.info("Container health check passed after restart")
+                        container_reused = True
+                    except Exception as e:
+                        logger.error(f"Container restart failed health check: {e}")
+                        logger.info("Removing non-functional container and will recreate")
+                        self.container.remove(force=True)
+                        self.container = None  # Force recreation below
+                else:
+                    # Container in unexpected state, remove and recreate
+                    logger.warning(f"Container in {self.container.status} state, recreating")
+                    self.container.remove(force=True)
+                    self.container = None  # Will be created below
+
             except docker.errors.NotFound:
-                # Container doesn't exist, create it
+                pass  # Container doesn't exist, will create below
+
+            # Create container if it doesn't exist or was removed
+            if self.container is None:
                 logger.info(f"Creating new container: {self.container_name}")
 
                 # Pull image if not exists (we'll create this image)
@@ -98,12 +126,13 @@ class DockerComputer(Computer):
 
             return {
                 "success": True,
-                "message": "Docker computer initialized",
+                "message": f"Docker computer {'reused' if container_reused else 'created'}",
                 "display_width": self.display_width,
                 "display_height": self.display_height,
                 "vnc_port": 5900,
                 "web_vnc_port": 6080,
                 "container_id": self.container.id[:12],
+                "container_reused": container_reused,
             }
 
         except Exception as e:
@@ -429,7 +458,7 @@ class DockerComputer(Computer):
             logger.error(f"Error waiting: {e}")
             return {"success": False, "message": str(e)}
 
-    async def get_status(self) -> Dict[str, any]:
+    async def get_status(self) -> Dict[str, Any]:
         """Get current container status.
 
         Returns:

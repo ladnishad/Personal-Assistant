@@ -10,6 +10,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @State private var showingLogoutAlert = false
+    @AppStorage("isDarkMode") private var isDarkMode = false
 
     var body: some View {
         NavigationStack {
@@ -80,7 +81,11 @@ struct SettingsView: View {
                 // App Settings Section
                 Section("Preferences") {
                     Label("Notifications", systemImage: "bell")
-                    Label("Appearance", systemImage: "paintbrush")
+
+                    Toggle(isOn: $isDarkMode) {
+                        Label("Dark Mode", systemImage: "moon.fill")
+                    }
+
                     Label("Privacy", systemImage: "hand.raised")
                 }
 

@@ -64,6 +64,7 @@ class Database:
             # Import all document models for Beanie
             from app.auth.models import User
             from app.calendar.models import CalendarEvent
+            from app.confirmations.document import Confirmation
             from app.conversations.models import Conversation, ConversationMessage
             from app.emails.models import Email
             from app.emails.relationships import EmailRelationship
@@ -86,6 +87,7 @@ class Database:
                     Conversation,
                     ConversationMessage,
                     Package,  # Package model for tracking with email relationships
+                    Confirmation,  # User confirmations for agent safety checks
                 ],
             )
 

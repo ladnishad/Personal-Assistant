@@ -1,7 +1,7 @@
 """Base class for computer environments."""
 
 from abc import ABC, abstractmethod
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 
 class Computer(ABC):
@@ -23,7 +23,7 @@ class Computer(ABC):
         self.is_ready = False
 
     @abstractmethod
-    async def initialize(self) -> Dict[str, any]:
+    async def initialize(self) -> Dict[str, Any]:
         """Initialize the computer environment.
 
         Returns:
@@ -138,7 +138,7 @@ class Computer(ABC):
         pass
 
     @abstractmethod
-    async def get_status(self) -> Dict[str, any]:
+    async def get_status(self) -> Dict[str, Any]:
         """Get current environment status.
 
         Returns:

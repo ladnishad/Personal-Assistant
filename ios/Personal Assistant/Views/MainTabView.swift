@@ -8,7 +8,8 @@
 import SwiftUI
 
 struct MainTabView: View {
-    @State private var selectedTab = 0
+    @State private var selectedTab = 1  // Default to Chat tab
+    @AppStorage("isDarkMode") private var isDarkMode = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -20,7 +21,7 @@ struct MainTabView: View {
 
             ConversationsListView()
                 .tabItem {
-                    Label("Chat", systemImage: "brain.head.profile")
+                    Label("Chat", systemImage: "bubble.left.and.bubble.right")
                 }
                 .tag(1)
 
@@ -31,6 +32,7 @@ struct MainTabView: View {
                 .tag(2)
         }
         .tint(.blue)
+        .preferredColorScheme(isDarkMode ? .dark : .light)
     }
 }
 

@@ -95,6 +95,7 @@ async def root():
 from app.agent.router import router as agent_router
 from app.auth.router import router as auth_router
 from app.calendar.router import router as calendar_router
+from app.confirmations.router import router as confirmations_router
 from app.conversations.router import router as conversations_router
 from app.emails.router import router as emails_router
 from app.integrations.router import router as integrations_router
@@ -115,6 +116,9 @@ app.include_router(
 app.include_router(tasks_router, prefix=f"{API_V1_PREFIX}/tasks", tags=["Tasks"])
 app.include_router(memory_router, prefix=f"{API_V1_PREFIX}/memory", tags=["Memory"])
 app.include_router(agent_router, prefix=f"{API_V1_PREFIX}/agent", tags=["Agent"])
+app.include_router(
+    confirmations_router, prefix=f"{API_V1_PREFIX}/confirmations", tags=["Confirmations"]
+)
 app.include_router(
     conversations_router, prefix=f"{API_V1_PREFIX}/conversations", tags=["Conversations"]
 )

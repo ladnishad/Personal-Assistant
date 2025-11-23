@@ -4,7 +4,7 @@ import asyncio
 import base64
 import logging
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from playwright.async_api import async_playwright, Browser, Page, Playwright
 
@@ -33,7 +33,7 @@ class PlaywrightComputer(Computer):
         self.page: Optional[Page] = None
         self.current_url: str = ""
 
-    async def initialize(self) -> Dict[str, any]:
+    async def initialize(self) -> Dict[str, Any]:
         """Initialize Playwright and launch browser.
 
         Returns:
@@ -44,10 +44,19 @@ class PlaywrightComputer(Computer):
             self.playwright = await async_playwright().start()
 
             # Launch browser (Chromium by default)
+            # Run headless in container environments or when no display is available
+            import os
+            # Check if we're in a container or if DISPLAY is not set
+            in_container = os.path.exists("/.dockerenv") or os.environ.get("COMPUTER_ENVIRONMENT") == "playwright"
+            has_display = os.environ.get("DISPLAY") is not None
+            headless = in_container or not has_display
+
             self.browser = await self.playwright.chromium.launch(
-                headless=False,  # Run with visible browser
+                headless=headless,  # Headless in container or without display
                 args=[
                     f"--window-size={self.display_width},{self.display_height}",
+                    "--no-sandbox",  # Required for container environments
+                    "--disable-setuid-sandbox",  # Required for container environments
                 ],
             )
 
@@ -346,7 +355,7 @@ class PlaywrightComputer(Computer):
             logger.error(f"Error waiting: {e}")
             return {"success": False, "message": str(e)}
 
-    async def get_status(self) -> Dict[str, any]:
+    async def get_status(self) -> Dict[str, Any]:
         """Get current browser status.
 
         Returns:

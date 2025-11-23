@@ -15,6 +15,7 @@ struct ChatMessage: Identifiable, Equatable {
     let toolsUsed: [String]?
     let actionsTaken: [String]?
     let taskReference: TaskReference?
+    let screenshots: [ScreenshotCapture]?
 
     enum MessageRole: String {
         case user, assistant, system
@@ -26,7 +27,7 @@ struct ChatMessage: Identifiable, Equatable {
         let action: String // "created", "updated", "completed"
     }
 
-    init(id: UUID = UUID(), role: MessageRole, content: String, timestamp: Date = Date(), toolsUsed: [String]? = nil, actionsTaken: [String]? = nil, taskReference: TaskReference? = nil) {
+    init(id: UUID = UUID(), role: MessageRole, content: String, timestamp: Date = Date(), toolsUsed: [String]? = nil, actionsTaken: [String]? = nil, taskReference: TaskReference? = nil, screenshots: [ScreenshotCapture]? = nil) {
         self.id = id
         self.role = role
         self.content = content
@@ -34,6 +35,7 @@ struct ChatMessage: Identifiable, Equatable {
         self.toolsUsed = toolsUsed
         self.actionsTaken = actionsTaken
         self.taskReference = taskReference
+        self.screenshots = screenshots
     }
 }
 
@@ -55,11 +57,12 @@ struct AgentChatRequest: Codable {
         case streamScreenshots = "stream_screenshots"
     }
 
-    init(message: String, context: [String: String]? = nil, useMemory: Bool = true, conversationId: String? = nil, conversationHistory: [ConversationHistoryMessage]? = nil, streamScreenshots: Bool = false) {
+    init(message: String, context: [String: String]? = nil, useMemory: Bool = true, conversationId: String? = nil, taskId: String? = nil, conversationHistory: [ConversationHistoryMessage]? = nil, streamScreenshots: Bool = false) {
         self.message = message
         self.context = context
         self.useMemory = useMemory
         self.conversationId = conversationId
+        self.taskId = taskId
         self.conversationHistory = conversationHistory
         self.streamScreenshots = streamScreenshots
     }
@@ -70,13 +73,23 @@ struct ConversationHistoryMessage: Codable {
     let content: String
 }
 
-struct ScreenshotCapture: Codable, Identifiable {
-    let id: UUID
+struct ScreenshotCapture: Codable, Identifiable, Equatable {
     let timestamp: String
     let screenshot: String  // Base64-encoded image
     let width: Int
     let height: Int
     let actionContext: String?
+    private let _id: UUID
+
+    var id: UUID { _id }
+
+    // Equatable conformance - compare based on timestamp since screenshots are unique per timestamp
+    static func == (lhs: ScreenshotCapture, rhs: ScreenshotCapture) -> Bool {
+        return lhs.timestamp == rhs.timestamp &&
+               lhs.width == rhs.width &&
+               lhs.height == rhs.height &&
+               lhs.actionContext == rhs.actionContext
+    }
 
     enum CodingKeys: String, CodingKey {
         case timestamp, screenshot, width, height
@@ -85,12 +98,21 @@ struct ScreenshotCapture: Codable, Identifiable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.id = UUID()
+        self._id = UUID()
         self.timestamp = try container.decode(String.self, forKey: .timestamp)
         self.screenshot = try container.decode(String.self, forKey: .screenshot)
         self.width = try container.decode(Int.self, forKey: .width)
         self.height = try container.decode(Int.self, forKey: .height)
         self.actionContext = try? container.decode(String.self, forKey: .actionContext)
+    }
+
+    init(timestamp: String, screenshot: String, width: Int, height: Int, actionContext: String? = nil) {
+        self._id = UUID()
+        self.timestamp = timestamp
+        self.screenshot = screenshot
+        self.width = width
+        self.height = height
+        self.actionContext = actionContext
     }
 }
 
@@ -201,6 +223,7 @@ enum StreamEvent {
     case agentStatus(status: String, message: String?)
     case toolCall(toolName: String, callId: String, args: [String: Any])
     case toolResult(toolName: String, callId: String, result: String?)
+    case screenshotCapture(screenshot: ScreenshotCapture)
     case messageDelta(delta: String)
     case messageComplete(message: String)
     case done(conversationId: String, toolsUsed: [String], actionsTaken: [AgentChatResponse.ActionTaken], taskReference: AgentChatResponse.TaskReferenceResponse?)

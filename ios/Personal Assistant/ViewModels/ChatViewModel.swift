@@ -19,6 +19,7 @@ class ChatViewModel: ObservableObject {
     @Published var activeTool: String?
     @Published var streamingMessage: String = ""
     @Published var taskWasUpdated = false
+    @Published var currentScreenshots: [ScreenshotCapture] = []
 
     private let apiService = APIService.shared
     private let taskId: String?
@@ -129,6 +130,7 @@ class ChatViewModel: ObservableObject {
         agentStatus = "Thinking..."
         activeTool = nil
         taskWasUpdated = false
+        currentScreenshots = []
 
         do {
             print("🚀 Starting streaming...")
@@ -136,7 +138,8 @@ class ChatViewModel: ObservableObject {
                 message: messageToSend,
                 useMemory: true,
                 conversationId: conversationId,
-                taskId: taskId
+                taskId: taskId,
+                streamScreenshots: true  // Enable screenshot streaming
             )
 
             var finalConversationId: String?
@@ -169,6 +172,10 @@ class ChatViewModel: ObservableObject {
                     if toolName == "update_task_content" {
                         taskWasUpdated = true
                     }
+
+                case .screenshotCapture(let screenshot):
+                    print("📸 Received screenshot: \(screenshot.actionContext ?? "no context")")
+                    currentScreenshots.append(screenshot)
 
                 case .messageDelta(let delta):
                     streamingMessage += delta
@@ -208,7 +215,8 @@ class ChatViewModel: ObservableObject {
                 content: streamingMessage,
                 toolsUsed: toolsUsed.isEmpty ? nil : toolsUsed,
                 actionsTaken: actionsTaken.isEmpty ? nil : actionsTaken.map { $0.tool },
-                taskReference: taskRef
+                taskReference: taskRef,
+                screenshots: currentScreenshots.isEmpty ? nil : currentScreenshots
             )
             messages.append(assistantMessage)
 
@@ -216,6 +224,7 @@ class ChatViewModel: ObservableObject {
             streamingMessage = ""
             agentStatus = nil
             activeTool = nil
+            currentScreenshots = []
 
         } catch let error as APIError {
             errorMessage = error.errorDescription

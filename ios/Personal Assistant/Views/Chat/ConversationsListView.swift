@@ -129,10 +129,6 @@ struct ConversationRowView: View {
                 }
 
                 Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
         }
         .padding(.vertical, 8)

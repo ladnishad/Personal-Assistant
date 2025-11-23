@@ -54,6 +54,7 @@ async def chat_with_agent_streamed(
     - agent_status: Current agent activity
     - tool_call: When a tool is invoked
     - tool_result: When a tool completes
+    - screenshot_capture: Screenshots from computer control (if stream_screenshots=true)
     - message_delta: Incremental message content
     - message_complete: Final complete message
     - done: Stream complete with metadata
@@ -65,6 +66,7 @@ async def chat_with_agent_streamed(
             use_memory=request.use_memory,
             conversation_id=request.conversation_id,
             task_id=request.task_id,
+            stream_screenshots=request.stream_screenshots,
         ),
         media_type="text/event-stream",
         headers={

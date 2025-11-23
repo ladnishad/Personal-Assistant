@@ -15,6 +15,7 @@ from app.agent.computer_tools import (
     disable_screenshot_streaming,
     get_screenshot_captures,
     clear_screenshot_captures,
+    set_user_context,
 )
 from app.agent.guardrails import OUTPUT_GUARDRAILS
 from app.agent.package_agent import create_package_tracking_agent
@@ -204,14 +205,30 @@ When users ask about packages, deliveries, or tracking:
 - The specialist can track shipments, provide delivery updates, and analyze email context
 
 **COMPUTER CONTROL & AUTOMATION:**
-When users ask you to perform tasks requiring browser or desktop interaction:
+⚠️ CRITICAL: If the user mentions ANY of these, you MUST transfer to Computer Control Specialist:
+- "go to" any website (e.g., "go to google.com", "go to amazon")
+- "navigate to" any URL or site
+- "open" any website or browser
+- "search google" or "search on [website]"
+- ANY request about current prices, deals, or product availability
+- ANY request to compare products or check reviews on actual sites
+
+DO NOT use your web search tool for these - transfer to Computer Control Specialist immediately.
+
+Transfer to Computer Control Specialist when users:
+- Ask about product prices, deals, or costs ("how much", "price", "cost", "deals")
+- Check product availability or stock ("available", "in stock", "can I get")
+- Want to compare products or services ("compare", "vs", "better", "which one")
+- Need current/real-time information from websites
 - Book reservations (restaurants, hotels, events)
 - Order items online (e-commerce)
 - Fill out web forms
 - Search websites and gather information
 - Perform any task requiring visual interface interaction
 
-Transfer to the Computer Control Specialist agent for these tasks. The specialist can:
+The Computer Control Specialist can:
+- Browse e-commerce sites to check current prices and availability
+- Compare products side-by-side across multiple websites
 - Navigate websites and web applications
 - Click buttons, fill forms, type text
 - Take screenshots to understand visual state
@@ -219,6 +236,9 @@ Transfer to the Computer Control Specialist agent for these tasks. The specialis
 - Handle complex web-based tasks
 
 Examples when to transfer to Computer Control:
+→ "What are the best headphones under $100" (needs real browsing for current prices)
+→ "Is the Sony WH-CH720N available at Best Buy"
+→ "Compare prices for wireless headphones"
 → "Book a table at Resy for tomorrow at 7pm"
 → "Search Amazon for wireless headphones under $100"
 → "Fill out this form on the website"
@@ -325,6 +345,9 @@ You already know this basic information about the user, so don't ask for it."""
                 logger.info("Screenshot streaming enabled for this request")
             else:
                 disable_screenshot_streaming()
+
+            # Set user context for computer tools (for confirmations)
+            set_user_context(str(user_id), conversation_id)
 
             # Extract any @remember commands from message
             remember_commands = extract_remember_commands(message)
@@ -619,6 +642,7 @@ You already know this basic information about the user, so don't ask for it."""
         use_memory: bool = True,
         conversation_id: Optional[str] = None,
         task_id: Optional[str] = None,
+        stream_screenshots: bool = False,
     ):
         """Process user message with streaming using Agents SDK.
 
@@ -630,6 +654,7 @@ You already know this basic information about the user, so don't ask for it."""
             use_memory: Whether to use long-term memory
             conversation_id: Existing conversation ID or None for new
             task_id: Task ID to link this conversation to
+            stream_screenshots: Whether to stream screenshots from computer control
 
         Yields:
             SSE-formatted event strings (event: <type>\ndata: <json>\n\n)
@@ -647,6 +672,14 @@ You already know this basic information about the user, so don't ask for it."""
 
             # Set user context for tools
             set_current_user_id(user_id)
+
+            # Set user context for computer tools (for confirmations and screenshots)
+            set_user_context(str(user_id), conversation_id)
+
+            # Enable screenshot streaming if requested
+            if stream_screenshots:
+                enable_screenshot_streaming()
+                logger.info("Screenshot streaming enabled for this conversation")
 
             # Extract any @remember commands from message
             remember_commands = extract_remember_commands(message)
@@ -678,11 +711,25 @@ You already know this basic information about the user, so don't ask for it."""
             # Build system instructions
             instructions = AgentService._get_system_instructions(user, context_memories)
 
+            # Force Computer Control transfer for obvious browser requests
+            message_lower = message.lower()
+            browser_triggers = [
+                "go to", "navigate to", "open google", "open amazon", "open browser",
+                "search google", "check price", "check availability", "current price",
+                "browse to", "visit website", "go on", "pull up", "show me on"
+            ]
+
+            if any(trigger in message_lower for trigger in browser_triggers):
+                instructions += "\n\n⚠️ MANDATORY: The user is explicitly asking for browser interaction. You MUST immediately transfer to Computer Control Specialist. Do NOT use web search."
+
             # Set user context for package tools
             set_package_user_id(user_id)
 
             # Create package tracking agent
             package_agent = create_package_tracking_agent()
+
+            # Create computer control agent
+            computer_agent = create_computer_control_agent()
 
             # Optimize model settings for faster responses
             # For GPT-5 models, use low reasoning effort for speed
@@ -701,7 +748,7 @@ You already know this basic information about the user, so don't ask for it."""
                 model=settings.openai_model,
                 model_settings=model_settings,
                 output_guardrails=OUTPUT_GUARDRAILS,
-                handoffs=[package_agent],
+                handoffs=[package_agent, computer_agent],  # Include both specialized agents
             )
 
             # Create session for conversation history
@@ -807,6 +854,22 @@ You already know this basic information about the user, so don't ask for it."""
                                 "result": str(output)[:200] if output else None,
                             }
                             yield f"event: tool_result\ndata: {json.dumps(result_event)}\n\n"
+
+                            # Check for screenshots if streaming is enabled
+                            if stream_screenshots:
+                                screenshots = get_screenshot_captures()
+                                for screenshot in screenshots:
+                                    screenshot_event = {
+                                        "screenshot": screenshot.screenshot,
+                                        "width": screenshot.width,
+                                        "height": screenshot.height,
+                                        "timestamp": screenshot.timestamp,
+                                        "action_context": screenshot.action_context,
+                                    }
+                                    yield f"event: screenshot_capture\ndata: {json.dumps(screenshot_event)}\n\n"
+                                    logger.info(f"📸 Emitted screenshot: {screenshot.action_context}")
+                                # Clear screenshots after emitting to avoid duplicates
+                                clear_screenshot_captures()
 
                             # Emit status update
                             yield f"event: agent_status\ndata: {json.dumps({'status': 'processing', 'message': 'Processing results...'})}\n\n"

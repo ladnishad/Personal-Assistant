@@ -58,8 +58,9 @@ services:
 
       # Computer Control
       - COMPUTER_ENVIRONMENT=${COMPUTER_ENVIRONMENT:-playwright}
-      - COMPUTER_DISPLAY_WIDTH=${COMPUTER_DISPLAY_WIDTH:-1024}
-      - COMPUTER_DISPLAY_HEIGHT=${COMPUTER_DISPLAY_HEIGHT:-768}
+      - COMPUTER_HOST=computer
+      - COMPUTER_DISPLAY_WIDTH=${COMPUTER_DISPLAY_WIDTH:-1920}
+      - COMPUTER_DISPLAY_HEIGHT=${COMPUTER_DISPLAY_HEIGHT:-1080}
       - COMPUTER_VNC_PASSWORD=${COMPUTER_VNC_PASSWORD:-lifeos123}
 
       # Background Jobs
@@ -79,6 +80,7 @@ services:
       - .:/app
     depends_on:
       - redis
+      - computer
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     networks:
       - lifeos-network
@@ -96,6 +98,27 @@ services:
       - redis_data:/data
     networks:
       - lifeos-network
+
+  # Computer Control Container (Browser Automation)
+  computer:
+    build:
+      context: .
+      dockerfile: Dockerfile.computer
+    container_name: lifeos-computer
+    ports:
+      - "5900:5900"  # VNC port for viewing the browser
+      - "6080:6080"  # noVNC web interface
+    environment:
+      - DISPLAY=:99
+      - RESOLUTION=1920x1080
+      - VNC_PASSWORD=${COMPUTER_VNC_PASSWORD:-lifeos123}
+    volumes:
+      - ./computer_workspace:/home/lifeos/workspace
+    networks:
+      - lifeos-network
+    shm_size: '2gb'  # Shared memory for browser
+    cap_add:
+      - SYS_ADMIN  # Required for browser sandboxing
 
 volumes:
   redis_data:

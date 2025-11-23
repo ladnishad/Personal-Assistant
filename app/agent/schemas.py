@@ -114,6 +114,19 @@ class ToolResultEvent(StreamEventBase):
     result: Optional[str] = Field(default=None, description="Tool execution result")
 
 
+class ScreenshotCaptureEvent(StreamEventBase):
+    """Screenshot captured from computer control agent."""
+
+    event: str = "screenshot_capture"
+    screenshot: str = Field(..., description="Base64-encoded PNG image")
+    width: int = Field(..., description="Screenshot width in pixels")
+    height: int = Field(..., description="Screenshot height in pixels")
+    timestamp: str = Field(..., description="ISO timestamp when screenshot was taken")
+    action_context: Optional[str] = Field(
+        default=None, description="What action was being performed (e.g., 'Clicked search button')"
+    )
+
+
 class MessageDeltaEvent(StreamEventBase):
     """Message delta (partial) event."""
 

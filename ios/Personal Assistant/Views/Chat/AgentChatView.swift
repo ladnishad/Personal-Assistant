@@ -9,7 +9,12 @@ import SwiftUI
 
 struct AgentChatView: View {
     @StateObject private var viewModel: ChatViewModel
+    @StateObject private var pollingService = ConfirmationPollingService.shared
     @FocusState private var isInputFocused: Bool
+    @State private var showingConfirmation = false
+    @State private var currentConfirmation: PendingConfirmation?
+    @State private var confirmationQueue: [PendingConfirmation] = []
+    @State private var processedConfirmationIds = Set<String>()
 
     init(conversationId: String? = nil) {
         _viewModel = StateObject(wrappedValue: ChatViewModel(conversationId: conversationId))
@@ -66,6 +71,12 @@ struct AgentChatView: View {
                                                     )
                                                     .foregroundColor(.primary)
                                             }
+                                        }
+
+                                        // Real-time screenshots during streaming
+                                        if !viewModel.currentScreenshots.isEmpty {
+                                            ScreenshotGalleryView(screenshots: viewModel.currentScreenshots)
+                                                .transition(.scale.combined(with: .opacity))
                                         }
 
                                         // Agent status indicator
@@ -143,6 +154,37 @@ struct AgentChatView: View {
             .navigationTitle("AI Assistant")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    let unprocessedCount = pollingService.pendingConfirmations.filter {
+                        !processedConfirmationIds.contains($0.id)
+                    }.count
+
+                    if unprocessedCount > 0 || !confirmationQueue.isEmpty {
+                        Button(action: {
+                            // Add all pending confirmations to queue if not already there
+                            for confirmation in pollingService.pendingConfirmations {
+                                if !processedConfirmationIds.contains(confirmation.id) &&
+                                   !confirmationQueue.contains(where: { $0.id == confirmation.id }) {
+                                    confirmationQueue.append(confirmation)
+                                }
+                            }
+
+                            // Show next confirmation
+                            if !showingConfirmation {
+                                showNextConfirmation()
+                            }
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .foregroundColor(.orange)
+                                Text("\(max(unprocessedCount, confirmationQueue.count))")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                            }
+                        }
+                    }
+                }
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button(action: {
@@ -161,6 +203,66 @@ struct AgentChatView: View {
                     await viewModel.loadConversation(id: conversationId)
                 }
             }
+            .onAppear {
+                // Start polling for confirmations
+                pollingService.startPolling()
+            }
+            .onDisappear {
+                // Stop polling when view disappears
+                pollingService.stopPolling()
+            }
+            .onChange(of: pollingService.pendingConfirmations) { oldValue, newValue in
+                // Find all new confirmations (not just the first)
+                let newConfirmations = newValue.filter { confirmation in
+                    !oldValue.contains(where: { $0.id == confirmation.id }) &&
+                    !processedConfirmationIds.contains(confirmation.id)
+                }
+
+                // Add new confirmations to queue
+                for confirmation in newConfirmations {
+                    if !confirmationQueue.contains(where: { $0.id == confirmation.id }) {
+                        confirmationQueue.append(confirmation)
+                    }
+                }
+
+                // Show next confirmation if not already showing one
+                if !showingConfirmation && !confirmationQueue.isEmpty {
+                    showNextConfirmation()
+                }
+            }
+            .sheet(isPresented: $showingConfirmation) {
+                if let confirmation = currentConfirmation {
+                    ConfirmationSheet(
+                        confirmation: confirmation,
+                        isPresented: $showingConfirmation,
+                        onDismiss: {
+                            // Mark as processed and show next if any
+                            if let current = currentConfirmation {
+                                processedConfirmationIds.insert(current.id)
+                                confirmationQueue.removeAll { $0.id == current.id }
+                            }
+                            currentConfirmation = nil
+
+                            // Show next confirmation after a brief delay
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                if !confirmationQueue.isEmpty {
+                                    showNextConfirmation()
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    private func showNextConfirmation() {
+        guard !confirmationQueue.isEmpty else { return }
+
+        // Get next confirmation that hasn't been processed
+        if let next = confirmationQueue.first(where: { !processedConfirmationIds.contains($0.id) }) {
+            currentConfirmation = next
+            showingConfirmation = true
         }
     }
 }
@@ -179,6 +281,12 @@ struct MessageBubble: View {
 
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 10) {
                 messageContentView
+
+                // Show screenshots from computer control agent
+                if let screenshots = message.screenshots, !screenshots.isEmpty {
+                    ScreenshotGalleryView(screenshots: screenshots)
+                        .transition(.scale.combined(with: .opacity))
+                }
 
                 if let taskRef = message.taskReference {
                     TaskReferenceCard(taskReference: taskRef)

@@ -320,7 +320,8 @@ class APIService {
         message: String,
         useMemory: Bool = true,
         conversationId: String? = nil,
-        taskId: String? = nil
+        taskId: String? = nil,
+        streamScreenshots: Bool = false
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         return AsyncThrowingStream { continuation in
             Task {
@@ -348,7 +349,8 @@ class APIService {
                         useMemory: useMemory,
                         conversationId: conversationId,
                         taskId: taskId,
-                        conversationHistory: nil
+                        conversationHistory: nil,
+                        streamScreenshots: streamScreenshots
                     )
                     request.httpBody = try encoder.encode(requestBody)
 
@@ -452,6 +454,14 @@ class APIService {
             } catch {
                 print("❌ Failed to decode tool_result: \(error)")
             }
+        case "screenshot_capture":
+            do {
+                let screenshot = try decoder.decode(ScreenshotCapture.self, from: jsonData)
+                print("✅ Decoded screenshot: \(screenshot.actionContext ?? "no context")")
+                return .screenshotCapture(screenshot: screenshot)
+            } catch {
+                print("❌ Failed to decode screenshot_capture: \(error)")
+            }
         case "message_delta":
             do {
                 let eventData = try decoder.decode(MessageDeltaEventData.self, from: jsonData)
@@ -513,5 +523,42 @@ class APIService {
     func getConversationByTask(taskId: String) async throws -> ConversationWithMessages {
         let endpoint = "/conversations/by-task/\(taskId)"
         return try await request(endpoint: endpoint, requiresAuth: true)
+    }
+
+    // MARK: - Confirmations
+
+    func getPendingConfirmations() async throws -> [PendingConfirmation] {
+        return try await request(endpoint: "/confirmations/pending", requiresAuth: true)
+    }
+
+    func respondToConfirmation(
+        confirmationId: String,
+        decision: UserConfirmationDecision
+    ) async throws -> ConfirmationResponse {
+        return try await request(
+            endpoint: "/confirmations/\(confirmationId)/respond",
+            method: "POST",
+            body: decision,
+            requiresAuth: true
+        )
+    }
+
+    func getConfirmationStatus(confirmationId: String) async throws -> ConfirmationResponse {
+        return try await request(
+            endpoint: "/confirmations/\(confirmationId)/status",
+            requiresAuth: true
+        )
+    }
+
+    func cancelConfirmation(confirmationId: String) async throws {
+        struct CancelResponse: Codable {
+            let message: String
+            let success: Bool
+        }
+        let _: CancelResponse = try await request(
+            endpoint: "/confirmations/\(confirmationId)",
+            method: "DELETE",
+            requiresAuth: true
+        )
     }
 }
