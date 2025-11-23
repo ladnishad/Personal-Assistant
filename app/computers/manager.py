@@ -119,11 +119,7 @@ class ComputerManager:
 
     async def get_status(self) -> Dict[str, any]:
         """Get environment status."""
-        if not self._initialized:
-            return {
-                "ready": False,
-                "message": "Computer environment not initialized",
-            }
+        await self._ensure_initialized()
         return await self.computer.get_status()
 
     async def start_browser(self, start_url: str = "https://www.google.com") -> Dict[str, str]:
