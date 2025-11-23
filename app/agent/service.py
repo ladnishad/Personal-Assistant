@@ -8,6 +8,7 @@ from agents import Agent, ModelSettings, Runner
 from beanie import PydanticObjectId
 from openai.types.responses import ResponseTextDeltaEvent
 
+from app.agent.calendar_agent import create_calendar_management_agent
 from app.agent.citations import extract_citations, process_content_with_citations
 from app.agent.computer_agent import create_computer_control_agent
 from app.agent.computer_tools import (
@@ -204,6 +205,30 @@ When users ask about packages, deliveries, or tracking:
 - For detailed package tracking, transfer to the Package Tracking Specialist agent
 - The specialist can track shipments, provide delivery updates, and analyze email context
 
+**CALENDAR MANAGEMENT:**
+Transfer to Calendar Management Specialist when users ask about:
+- Their schedule or calendar ("What's on my calendar?", "What do I have today/tomorrow?")
+- Availability ("Am I free at 2pm?", "Do I have anything on Monday?")
+- Finding events ("When is my dentist appointment?", "Find my meeting with John")
+- Creating events ("Schedule a meeting...", "Add to my calendar...", "Block time for...")
+- Upcoming commitments ("What's my week looking like?", "What's coming up?")
+
+The Calendar Management Specialist can:
+- Sync calendars from Google Calendar
+- View events (today, tomorrow, this week, upcoming)
+- Search for specific events by keyword
+- Check availability and detect scheduling conflicts
+- Create new calendar events
+- Provide intelligent scheduling suggestions
+
+Examples when to transfer to Calendar Management:
+→ "What's on my calendar today?"
+→ "Am I free tomorrow at 2pm?"
+→ "Find my dentist appointment"
+→ "Schedule a team meeting next Monday at 10am"
+→ "What does my week look like?"
+→ "Do I have any conflicts on Friday?"
+
 **COMPUTER CONTROL & AUTOMATION:**
 ⚠️ CRITICAL: If the user mentions ANY of these, you MUST transfer to Computer Control Specialist:
 - "go to" any website (e.g., "go to google.com", "go to amazon")
@@ -245,7 +270,7 @@ Examples when to transfer to Computer Control:
 → "Order pizza from Domino's"
 → "Find available hotel rooms in Austin for next week"
 
-You have access to tools for emails, tasks, web search, MEMORY, package tracking, and computer control. Use them proactively to provide personalized, contextual assistance."""
+You have access to tools for emails, tasks, web search, MEMORY, package tracking, calendar management, and computer control. Use them proactively to provide personalized, contextual assistance."""
 
     @staticmethod
     async def _ensure_user_profile_memory(user: User) -> None:
@@ -388,6 +413,7 @@ You already know this basic information about the user, so don't ask for it."""
             # Create specialized agents (will use contextvar user_id in tools)
             package_agent = create_package_tracking_agent()
             computer_agent = create_computer_control_agent()
+            calendar_agent = create_calendar_management_agent()
 
             # Optimize model settings for faster responses
             # For GPT-5 models, use low reasoning effort for speed
@@ -406,7 +432,7 @@ You already know this basic information about the user, so don't ask for it."""
                 model=settings.openai_model,
                 model_settings=model_settings,
                 output_guardrails=OUTPUT_GUARDRAILS,
-                handoffs=[package_agent, computer_agent],  # Add specialized agents
+                handoffs=[package_agent, computer_agent, calendar_agent],  # Add all specialized agents
             )
 
             # Create session for conversation history
@@ -725,11 +751,10 @@ You already know this basic information about the user, so don't ask for it."""
             # Set user context for package tools
             set_package_user_id(user_id)
 
-            # Create package tracking agent
+            # Create specialized agents
             package_agent = create_package_tracking_agent()
-
-            # Create computer control agent
             computer_agent = create_computer_control_agent()
+            calendar_agent = create_calendar_management_agent()
 
             # Optimize model settings for faster responses
             # For GPT-5 models, use low reasoning effort for speed
@@ -748,7 +773,7 @@ You already know this basic information about the user, so don't ask for it."""
                 model=settings.openai_model,
                 model_settings=model_settings,
                 output_guardrails=OUTPUT_GUARDRAILS,
-                handoffs=[package_agent, computer_agent],  # Include both specialized agents
+                handoffs=[package_agent, computer_agent, calendar_agent],  # Include all specialized agents
             )
 
             # Create session for conversation history

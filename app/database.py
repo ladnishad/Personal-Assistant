@@ -63,7 +63,7 @@ class Database:
 
             # Import all document models for Beanie
             from app.auth.models import User
-            from app.calendar.models import CalendarEvent
+            from app.calendar.models import Calendar, CalendarEvent
             from app.confirmations.document import Confirmation
             from app.conversations.models import Conversation, ConversationMessage
             from app.emails.models import Email
@@ -81,7 +81,8 @@ class Database:
                     Integration,
                     Email,
                     EmailRelationship,  # Email relationship graph for package tracking
-                    CalendarEvent,
+                    Calendar,  # User's calendars from Google Calendar
+                    CalendarEvent,  # Calendar events
                     Task,
                     Memory,
                     Conversation,
